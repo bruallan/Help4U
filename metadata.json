@@ -1,5 +1,5 @@
 {
-  "name": "Dashboard de Velocidade de Vendas",
+  "name": "Help4U",
   "description": "Dashboard para importar planilhas de vendas e calcular a velocidade média de venda e o tempo para vender uma unidade de cada produto.",
   "requestFramePermissions": []
 }
