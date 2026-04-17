@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import { UploadCloud, Search, FileSpreadsheet, AlertCircle, Loader2, LayoutDashboard, ShoppingCart, TrendingUp, Menu, X, ZoomIn, ZoomOut, Download, Wallet, Calendar, ChevronDown, Check } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, ComposedChart, Bar, Line, Legend } from 'recharts';
+import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, ComposedChart, Bar, Line, Legend, ReferenceLine } from 'recharts';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -1232,61 +1232,90 @@ export default function App() {
                 )}
                 
                 {activeTab === 'lucro_fluxo' && (
-                  <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden p-6">
-                    {financialStats.length > 0 ? (
-                      <ResponsiveContainer width="100%" height={500}>
-                        <ComposedChart
-                          data={financialStats}
-                          margin={{ top: 20, right: 20, bottom: 20, left: 20 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                          <XAxis 
-                            dataKey="dateStr" 
-                            tick={{ fill: '#64748b', fontSize: 12 }}
-                            axisLine={{ stroke: '#cbd5e1' }}
-                            tickLine={false}
-                          />
-                          <YAxis 
-                            yAxisId="left" 
-                            tickFormatter={(value) => `R$ ${value}`}
-                            tick={{ fill: '#64748b', fontSize: 12 }}
-                            axisLine={false}
-                            tickLine={false}
-                          />
-                          <YAxis 
-                            yAxisId="right" 
-                            orientation="right" 
-                            tick={{ fill: '#64748b', fontSize: 12 }}
-                            axisLine={false}
-                            tickLine={false}
-                          />
-                          <RechartsTooltip content={<CustomFinancialTooltip />} cursor={{ fill: '#f1f5f9' }} />
-                          <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                          
-                          <Bar yAxisId="left" dataKey="faturamento" name="Faturamento" fill="#93c5fd" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                          <Bar yAxisId="left" dataKey="margemBruta" name="Margem Bruta" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                          <Bar yAxisId="left" dataKey="margemLiquida" name="Margem Líquida" fill="#1e40af" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                          
-                          <Line 
-                            yAxisId="right" 
-                            type="monotone" 
-                            dataKey="volume" 
-                            name="Volume de Vendas" 
-                            stroke="#f97316" 
-                            strokeWidth={3} 
-                            dot={{ fill: '#f97316', strokeWidth: 2, r: 4 }} 
-                            activeDot={{ r: 6 }} 
-                          />
-                        </ComposedChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-12">
-                        <AlertCircle className="w-10 h-10 text-slate-400 mb-4" />
-                        <p className="text-slate-500 font-medium text-center">
-                          Nenhum dado financeiro diário encontrado.
-                        </p>
+                  <div className="space-y-6">
+                    {/* Sumário do Período */}
+                    {financialStats.length > 0 && (
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        {[
+                          { title: 'Faturamento Total', value: financialStats.reduce((acc, curr) => acc + curr.faturamento, 0), type: 'currency', color: 'text-blue-400' },
+                          { title: 'Margem Bruta Total', value: financialStats.reduce((acc, curr) => acc + curr.margemBruta, 0), type: 'currency', color: 'text-blue-500' },
+                          { title: 'Margem Líquida Total', value: financialStats.reduce((acc, curr) => acc + curr.margemLiquida, 0), type: 'currency', color: 'text-blue-800' },
+                          { title: 'Volume Total', value: financialStats.reduce((acc, curr) => acc + curr.volume, 0), type: 'number', color: 'text-orange-500' }
+                        ].map((item, idx) => (
+                          <div key={idx} className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+                            <p className="text-sm font-medium text-slate-500 mb-1">{item.title}</p>
+                            <p className={cn("text-2xl font-bold", item.color)}>
+                              {item.type === 'currency' 
+                                ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.value)
+                                : item.value}
+                            </p>
+                          </div>
+                        ))}
                       </div>
                     )}
+
+                    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden p-6">
+                      {financialStats.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={500}>
+                          <ComposedChart
+                            data={financialStats}
+                            margin={{ top: 20, right: 20, bottom: 20, left: 20 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                            <XAxis 
+                              dataKey="dateStr" 
+                              tick={{ fill: '#64748b', fontSize: 12 }}
+                              axisLine={{ stroke: '#cbd5e1' }}
+                              tickLine={false}
+                            />
+                            <YAxis 
+                              yAxisId="left" 
+                              tickFormatter={(value) => `R$ ${value}`}
+                              tick={{ fill: '#64748b', fontSize: 12 }}
+                              axisLine={false}
+                              tickLine={false}
+                            />
+                            <YAxis 
+                              yAxisId="right" 
+                              orientation="right" 
+                              tick={{ fill: '#64748b', fontSize: 12 }}
+                              axisLine={false}
+                              tickLine={false}
+                            />
+                            <RechartsTooltip content={<CustomFinancialTooltip />} cursor={{ fill: '#f1f5f9' }} />
+                            <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                            
+                            <Bar yAxisId="left" dataKey="faturamento" name="Faturamento" fill="#93c5fd" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                            <Bar yAxisId="left" dataKey="margemBruta" name="Margem Bruta" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                            <Bar yAxisId="left" dataKey="margemLiquida" name="Margem Líquida" fill="#1e40af" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                            
+                            <Line 
+                              yAxisId="right" 
+                              type="monotone" 
+                              dataKey="volume" 
+                              name="Volume de Vendas" 
+                              stroke="#f97316" 
+                              strokeWidth={3} 
+                              dot={{ fill: '#f97316', strokeWidth: 2, r: 4 }} 
+                              activeDot={{ r: 6 }} 
+                            />
+
+                            {/* Linhas de Média */}
+                            <ReferenceLine yAxisId="left" y={financialStats.reduce((sum, item) => sum + item.faturamento, 0) / financialStats.length} stroke="#93c5fd" strokeDasharray="5 5" opacity={0.6} />
+                            <ReferenceLine yAxisId="left" y={financialStats.reduce((sum, item) => sum + item.margemBruta, 0) / financialStats.length} stroke="#3b82f6" strokeDasharray="5 5" opacity={0.6} />
+                            <ReferenceLine yAxisId="left" y={financialStats.reduce((sum, item) => sum + item.margemLiquida, 0) / financialStats.length} stroke="#1e40af" strokeDasharray="5 5" opacity={0.6} />
+                            <ReferenceLine yAxisId="right" y={financialStats.reduce((sum, item) => sum + item.volume, 0) / financialStats.length} stroke="#f97316" strokeDasharray="5 5" opacity={0.6} />
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-12">
+                          <AlertCircle className="w-10 h-10 text-slate-400 mb-4" />
+                          <p className="text-slate-500 font-medium text-center">
+                            Nenhum dado financeiro diário encontrado.
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
                 
