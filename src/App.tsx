@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { UploadCloud, Search, FileSpreadsheet, AlertCircle, Loader2, LayoutDashboard, ShoppingCart, TrendingUp, Menu, X, ZoomIn, ZoomOut, Download, Wallet, Calendar, ChevronDown, Check } from 'lucide-react';
+import { UploadCloud, Search, FileSpreadsheet, AlertCircle, Loader2, LayoutDashboard, ShoppingCart, TrendingUp, Menu, X, ZoomIn, ZoomOut, Download, Wallet, Calendar, ChevronDown, Check, Dot } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, ComposedChart, Bar, Line, Legend, ReferenceLine } from 'recharts';
@@ -8,6 +8,8 @@ import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip as R
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+const CATEGORY_COLORS = ["#ec4899", "#8b5cf6", "#f59e0b", "#3b82f6", "#10b981", "#ef4444", "#6366f1", "#14b8a6", "#84cc16", "#a855f7", "#fb923c", "#0ea5e9", "#78716c", "#94a3b8", "#f43f5e"];
 
 interface ProductStats {
   name: string;
@@ -31,6 +33,7 @@ interface DailyFinancialStats {
   date: Date;
   dateStr: string;
   volume: number;
+  transactions: number;
   faturamento: number;
   margemBruta: number;
   margemLiquida: number;
@@ -45,6 +48,27 @@ interface MappedRow {
   salePrice: number;
   costPrice: number;
   client: string;
+  category: string;
+}
+
+interface MarketScatterStat {
+  name: string;
+  volumePercent: number;
+  marginPercent: number;
+  volume: number;
+  margemLiquida: number;
+  faturamento: number;
+}
+
+interface ProductScatterStat {
+  name: string;
+  category: string;
+  volumePercent: number;
+  marginPercent: number;
+  volume: number;
+  margemLiquida: number;
+  faturamento: number;
+  totalCost: number;
 }
 
 function parseExcelDate(val: any): Date | null {
@@ -150,6 +174,58 @@ const CustomFinancialTooltip = ({ active, payload, label }: any) => {
             <span className="font-medium text-slate-700 flex items-center"><span className="w-3 h-3 rounded-full bg-orange-500 mr-2"></span>Volume Vendas:</span>
             <span>{data.volume} unid.</span>
           </p>
+          <div className="border-t my-1"></div>
+          <p className="flex justify-between">
+            <span className="font-medium text-slate-700 flex items-center"><span className="w-3 h-3 rounded-full bg-purple-500 mr-2"></span>Ticket Médio:</span>
+            <span>{data.transactions > 0 ? formatCurrency(data.faturamento / data.transactions) : formatCurrency(0)}</span>
+          </p>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
+const CustomMarketScatterTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload as MarketScatterStat;
+    
+    const formatCurrency = (val: number) => 
+      new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+
+    return (
+      <div className="bg-white p-4 border border-slate-200 shadow-xl rounded-xl text-sm min-w-[200px]">
+        <p className="font-bold text-slate-800 mb-2 border-b pb-2">{data.name}</p>
+        <div className="space-y-1 text-slate-600">
+          <p><span className="font-medium text-slate-700">Volume (% do Total):</span> {data.volumePercent.toFixed(2)}%</p>
+          <p><span className="font-medium text-slate-700">Margem Líquida (% do Faturamento):</span> {data.marginPercent.toFixed(2)}%</p>
+          <p><span className="font-medium text-slate-700">Volume Absoluto:</span> {data.volume} unid.</p>
+          <p><span className="font-medium text-slate-700">Faturamento:</span> {formatCurrency(data.faturamento)}</p>
+          <p><span className="font-medium text-slate-700">Margem Líquida (R$):</span> {formatCurrency(data.margemLiquida)}</p>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
+const CustomProductScatterTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload as ProductScatterStat;
+    
+    const formatCurrency = (val: number) => 
+      new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+
+    return (
+      <div className="bg-white p-4 border border-slate-200 shadow-xl rounded-xl text-sm min-w-[200px]">
+        <p className="font-bold text-slate-800 mb-1 border-b pb-1">{data.name}</p>
+        <p className="text-xs text-slate-500 mb-2 uppercase font-semibold">{data.category}</p>
+        <div className="space-y-1 text-slate-600">
+          <p><span className="font-medium text-slate-700">Volume (vs Top):</span> {data.volumePercent.toFixed(2)}%</p>
+          <p><span className="font-medium text-slate-700">Margem %:</span> {data.marginPercent.toFixed(2)}%</p>
+          <p><span className="font-medium text-slate-700">Volume Absoluto:</span> {data.volume} unid.</p>
+          <p><span className="font-medium text-slate-700">Faturamento:</span> {formatCurrency(data.faturamento)}</p>
+          <p><span className="font-medium text-slate-700">Margem Líquida:</span> {formatCurrency(data.margemLiquida)}</p>
         </div>
       </div>
     );
@@ -233,6 +309,8 @@ const UnitDropdown = ({ availableUnits, selectedUnits, onChange }: { availableUn
 export default function App() {
   const [stats, setStats] = useState<ProductStats[]>([]);
   const [financialStats, setFinancialStats] = useState<DailyFinancialStats[]>([]);
+  const [marketScatterStats, setMarketScatterStats] = useState<MarketScatterStat[]>([]);
+  const [productScatterStats, setProductScatterStats] = useState<ProductScatterStat[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -240,7 +318,7 @@ export default function App() {
   const [fileName, setFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const [activeTab, setActiveTab] = useState<'vendas' | 'indicadores' | 'lucro_fluxo'>('vendas');
+  const [activeTab, setActiveTab] = useState<'vendas' | 'indicadores' | 'lucro_fluxo' | 'dispersao_mercados' | 'dispersao_produtos'>('vendas');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   const [rawData, setRawData] = useState<MappedRow[] | null>(null);
@@ -312,7 +390,7 @@ export default function App() {
       }
       
       let headerRowIndex = -1;
-      let colMap = { date: -1, product: -1, buyer: -1, sale: -1, cost: -1, client: -1 };
+      let colMap = { date: -1, product: -1, buyer: -1, sale: -1, cost: -1, client: -1, category: -1 };
 
       for (let i = 0; i < Math.min(rows.length, 50); i++) {
         const row = rows[i];
@@ -322,12 +400,14 @@ export default function App() {
           headerRowIndex = i;
           row.forEach((cell, idx) => {
             const val = String(cell).trim();
-            if (val === "Data/hora") colMap.date = idx;
-            else if (val === "Produto") colMap.product = idx;
-            else if (val === "Número do cartão") colMap.buyer = idx;
-            else if (val === "Valor (R$)") colMap.sale = idx;
-            else if (val === "Preço de Custo (R$)") colMap.cost = idx;
-            else if (val === "Cliente") colMap.client = idx;
+            const lower = val.toLowerCase();
+            if (val === "Data/hora" || lower === "data/hora") colMap.date = idx;
+            else if (val === "Produto" || lower === "produto") colMap.product = idx;
+            else if (val === "Número do cartão" || lower === "número do cartão") colMap.buyer = idx;
+            else if (val === "Valor (R$)" || lower.includes("valor")) colMap.sale = idx;
+            else if (val === "Preço de Custo (R$)" || lower.includes("custo")) colMap.cost = idx;
+            else if (lower.includes('cliente') || lower.includes('unidade') || lower.includes('mercado') || lower.includes('condomínio') || lower.includes('condominio')) colMap.client = idx;
+            else if (lower === 'categoria' || lower.includes('categoria')) colMap.category = idx;
           });
           break;
         }
@@ -363,9 +443,19 @@ export default function App() {
         if (productName == null || !String(productName).trim()) continue;
 
         const buyerId = colMap.buyer !== -1 && row[colMap.buyer] != null ? String(row[colMap.buyer]).trim() : '';
-        const salePrice = colMap.sale !== -1 ? (parseFloat(row[colMap.sale]) || 0) : 0;
-        const costPrice = colMap.cost !== -1 ? (parseFloat(row[colMap.cost]) || 0) : 0;
+        const parseBRNumber = (val: any) => {
+          if (typeof val === 'number') return val;
+          if (typeof val === 'string') {
+            const clean = val.replace(/\./g, '').replace(',', '.');
+            return parseFloat(clean) || 0;
+          }
+          return 0;
+        };
+
+        const salePrice = colMap.sale !== -1 ? parseBRNumber(row[colMap.sale]) : 0;
+        const costPrice = colMap.cost !== -1 ? parseBRNumber(row[colMap.cost]) : 0;
         const client = colMap.client !== -1 && row[colMap.client] != null ? String(row[colMap.client]).trim() : '';
+        const category = colMap.category !== -1 && row[colMap.category] != null ? String(row[colMap.category]).trim() : 'Sem Categoria';
 
         if (client) uniqueClients.add(client);
 
@@ -376,7 +466,8 @@ export default function App() {
             buyerId,
             salePrice,
             costPrice,
-            client
+            client,
+            category
         });
       }
       
@@ -412,7 +503,9 @@ export default function App() {
           buyers: Map<string, number>, 
           pixCount: number, 
           totalSale: number, 
-          totalCost: number 
+          totalCost: number,
+          totalDeduction: number,
+          category: string
         }>();
         
         let processedCount = 0;
@@ -421,20 +514,64 @@ export default function App() {
         const globalBuyers = new Set<string>();
         const dailyFinances = new Map<string, DailyFinancialStats>();
         
+        // Market stats map to calculate "Dispersão"
+        interface MarketStatsBuilder {
+          name: string;
+          volume: number;
+          faturamento: number;
+          margemBruta: number;
+          deduction: number;
+        }
+        const marketStatsMap = new Map<string, MarketStatsBuilder>();
+        
         const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
         
-        const defaultTaxRate = 0.20; // Default 20%
-        const alamedaTaxRate = 0.27; // 27% para Alameda
+        const getTaxRateForClient = (clientName: string) => {
+          if (!clientName) return 0.20;
+          const lower = clientName.toLowerCase();
+          if (lower.includes('alameda')) return 0.27;
+          if (lower.includes('porto') || lower.includes('sollare')) return 0.245;
+          if (lower.includes('villa')) return 0.25;
+          if (lower.includes('verde vida') || lower.includes('verdevida')) return 0.235;
+          if (lower.includes('jardim') || lower.includes('hortências') || lower.includes('hortencias')) return 0.24;
+          return 0.20; // Default fallback
+        };
         
         const filterStartMs = filterStartDate ? new Date(filterStartDate + 'T00:00:00').getTime() : null;
         const filterEndMs = filterEndDate ? new Date(filterEndDate + 'T23:59:59').getTime() : null;
 
-        for (let i = 0; i < rawData.length; i++) {
-          const row = rawData[i];
-          
-          if (filterStartMs && row.dayDate.getTime() < filterStartMs) continue;
-          if (filterEndMs && row.dayDate.getTime() > filterEndMs) continue;
-          if (selectedUnits.length > 0 && row.client && !selectedUnits.includes(row.client)) continue;
+        const filteredRows = rawData.filter(row => {
+          if (filterStartMs && row.dayDate.getTime() < filterStartMs) return false;
+          if (filterEndMs && row.dayDate.getTime() > filterEndMs) return false;
+          if (selectedUnits.length > 0 && row.client && !selectedUnits.includes(row.client)) return false;
+          return true;
+        });
+
+        // Agrupamento de Vendas / Transações (3 segundos)
+        const sortedForTx = [...filteredRows].sort((a, b) => {
+          if (a.client < b.client) return -1;
+          if (a.client > b.client) return 1;
+          return a.date.getTime() - b.date.getTime();
+        });
+
+        let currentTxStartTime = 0;
+        let currentTxClient = '';
+        const txCountPerDay = new Map<string, number>();
+
+        for (const row of sortedForTx) {
+          const rowTime = row.date.getTime();
+          const rowClient = row.client;
+          const dateStr = row.dayDate.toISOString().split('T')[0];
+
+          if (rowClient !== currentTxClient || (rowTime - currentTxStartTime) > 3000) {
+             txCountPerDay.set(dateStr, (txCountPerDay.get(dateStr) || 0) + 1);
+             currentTxClient = rowClient;
+             currentTxStartTime = rowTime;
+          }
+        }
+
+        for (let i = 0; i < filteredRows.length; i++) {
+          const row = filteredRows[i];
           
           if (!globalMinDay || row.dayDate.getTime() < globalMinDay.getTime()) globalMinDay = row.dayDate;
           if (!globalMaxDay || row.dayDate.getTime() > globalMaxDay.getTime()) globalMaxDay = row.dayDate;
@@ -446,7 +583,7 @@ export default function App() {
           }
         
         if (!productMap.has(nameStr)) {
-          productMap.set(nameStr, { dates: [], buyers: new Map(), pixCount: 0, totalSale: 0, totalCost: 0 });
+          productMap.set(nameStr, { dates: [], buyers: new Map(), pixCount: 0, totalSale: 0, totalCost: 0, totalDeduction: 0, category: row.category || 'Sem Categoria' });
         }
         
         const pData = productMap.get(nameStr)!;
@@ -456,8 +593,17 @@ export default function App() {
         } else {
           pData.pixCount++;
         }
+        const currentTaxRate = getTaxRateForClient(row.client);
+        const itemDeduction = row.salePrice * currentTaxRate;
+        const testMargemLiquida = row.salePrice - row.costPrice - itemDeduction;
+        
+        if (testMargemLiquida < 0) {
+          row.costPrice = 0;
+        }
+
         pData.totalSale += row.salePrice;
         pData.totalCost += row.costPrice;
+        pData.totalDeduction += itemDeduction;
         
         // --- Daily financial calc ---
         const dateStr = row.dayDate.toISOString().split('T')[0];
@@ -466,6 +612,7 @@ export default function App() {
             date: row.dayDate,
             dateStr: row.dayDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
             volume: 0,
+            transactions: txCountPerDay.get(dateStr) || 0,
             faturamento: 0,
             margemBruta: 0,
             margemLiquida: 0,
@@ -474,15 +621,23 @@ export default function App() {
         }
         const dayStats = dailyFinances.get(dateStr)!;
         
-        const isAlameda = row.client === "Condomínio Alameda das Águas";
-        const currentTaxRate = isAlameda ? alamedaTaxRate : defaultTaxRate;
-        
         dayStats.volume += 1;
         dayStats.faturamento += row.salePrice;
         
         const itemMargemBruta = row.salePrice - row.costPrice;
+        
         dayStats.margemBruta += itemMargemBruta;
-        dayStats.deduction += (row.salePrice * currentTaxRate);
+        dayStats.deduction += itemDeduction;
+        
+        const clientName = row.client || 'Desconhecido';
+        if (!marketStatsMap.has(clientName)) {
+           marketStatsMap.set(clientName, { name: clientName, volume: 0, faturamento: 0, margemBruta: 0, deduction: 0 });
+        }
+        const mStats = marketStatsMap.get(clientName)!;
+        mStats.volume += 1;
+        mStats.faturamento += row.salePrice;
+        mStats.margemBruta += itemMargemBruta;
+        mStats.deduction += itemDeduction;
         
         processedCount++;
       }
@@ -497,6 +652,9 @@ export default function App() {
         : 30;
         
       const totalGlobalBuyers = globalBuyers.size > 0 ? globalBuyers.size : 1;
+      
+      let tempProdStats: any[] = [];
+      let maxProdVolume = 0;
       
       for (const [name, data] of productMap.entries()) {
         const dates = data.dates.sort((a, b) => a.getTime() - b.getTime());
@@ -588,6 +746,20 @@ export default function App() {
         const grossDays = Math.max(1, Math.round((maxDate.getTime() - minDate.getTime()) / 86400000));
         const grossVelocity = volume / grossDays;
 
+        const margemLiquidaProd = data.totalSale - data.totalCost - data.totalDeduction;
+        const marginPercentProd = data.totalSale > 0 ? (margemLiquidaProd / data.totalSale) * 100 : 0;
+        if (volume > maxProdVolume) maxProdVolume = volume;
+
+        tempProdStats.push({
+           name,
+           category: data.category,
+           volume,
+           marginPercent: marginPercentProd,
+           faturamento: data.totalSale,
+           margemLiquida: margemLiquidaProd,
+           totalCost: data.totalCost
+        });
+
         newStats.push({
           name,
           salesCount,
@@ -630,6 +802,34 @@ export default function App() {
         day.margemLiquida = day.margemBruta - day.deduction;
       });
       setFinancialStats(sortedDays);
+      
+      const marketArray = Array.from(marketStatsMap.values());
+      const globalVolume = marketArray.reduce((acc, m) => acc + m.volume, 0);
+      
+      const newScatterStats: MarketScatterStat[] = marketArray.map(m => {
+         const margemLiquida = m.margemBruta - m.deduction;
+         const volumePercent = globalVolume > 0 ? (m.volume / globalVolume) * 100 : 0;
+         const marginPercent = m.faturamento > 0 ? (margemLiquida / m.faturamento) * 100 : 0;
+         return {
+            name: m.name,
+            volumePercent,
+            marginPercent,
+            volume: m.volume,
+            faturamento: m.faturamento,
+            margemLiquida
+         };
+      });
+      setMarketScatterStats(newScatterStats);
+      
+      const categorySet = new Set<string>();
+      const finalProdScatterStats: ProductScatterStat[] = tempProdStats.map(p => {
+         categorySet.add(p.category);
+         return {
+           ...p,
+           volumePercent: medianVolume > 0 ? (p.volume / (medianVolume * 2)) * 100 : 0
+         };
+      });
+      setProductScatterStats(finalProdScatterStats);
       
       setStats(newStats);
       setError(null);
@@ -851,6 +1051,32 @@ export default function App() {
             <Wallet className="w-5 h-5" />
             <span>Lucro e Fluxo</span>
           </button>
+
+          <button
+            onClick={() => { setActiveTab('dispersao_mercados'); setIsSidebarOpen(false); }}
+            className={cn(
+              "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
+              activeTab === 'dispersao_mercados' 
+                ? "bg-blue-50 text-blue-700" 
+                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            )}
+          >
+            <Dot className="w-5 h-5" />
+            <span>Dispersão Mercados</span>
+          </button>
+          
+          <button
+            onClick={() => { setActiveTab('dispersao_produtos'); setIsSidebarOpen(false); }}
+            className={cn(
+              "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
+              activeTab === 'dispersao_produtos' 
+                ? "bg-blue-50 text-blue-700" 
+                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            )}
+          >
+            <Dot className="w-5 h-5" />
+            <span>Dispersão Produtos</span>
+          </button>
         </nav>
       </aside>
 
@@ -869,13 +1095,17 @@ export default function App() {
             
             <header>
               <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-                {activeTab === 'vendas' ? 'Dashboard de Vendas' : activeTab === 'lucro_fluxo' ? 'Lucro e Fluxo Diário' : 'Indicadores de Risco'}
+                {activeTab === 'vendas' ? 'Dashboard de Vendas' : activeTab === 'lucro_fluxo' ? 'Lucro e Fluxo Diário' : activeTab === 'dispersao_mercados' ? 'Dispersão de Mercados' : activeTab === 'dispersao_produtos' ? 'Dispersão de Produtos' : 'Indicadores de Risco'}
               </h1>
               <p className="text-slate-500 mt-2">
                 {activeTab === 'vendas' 
                   ? 'Importe sua planilha de vendas para calcular a velocidade média e o tempo de venda por produto.'
                   : activeTab === 'lucro_fluxo' 
                   ? 'Cruze o volume físico de vendas com o funil financeiro (Faturamento > Margem Bruta > Margem Líquida).'
+                  : activeTab === 'dispersao_mercados'
+                  ? 'Analise a relação entre o share de volume e a margem líquida percentual de cada unidade.'
+                  : activeTab === 'dispersao_produtos'
+                  ? 'Visualize a alta performance vs. rentabilidade de cada produto considerando o ticket isolado por categoria.'
                   : 'Matriz de Risco de Demanda e Estoque baseada em Volume, Penetração e Venda Cega.'}
               </p>
             </header>
@@ -1235,12 +1465,13 @@ export default function App() {
                   <div className="space-y-6">
                     {/* Sumário do Período */}
                     {financialStats.length > 0 && (
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                         {[
                           { title: 'Faturamento Total', value: financialStats.reduce((acc, curr) => acc + curr.faturamento, 0), type: 'currency', color: 'text-blue-400' },
                           { title: 'Margem Bruta Total', value: financialStats.reduce((acc, curr) => acc + curr.margemBruta, 0), type: 'currency', color: 'text-blue-500' },
                           { title: 'Margem Líquida Total', value: financialStats.reduce((acc, curr) => acc + curr.margemLiquida, 0), type: 'currency', color: 'text-blue-800' },
-                          { title: 'Volume Total', value: financialStats.reduce((acc, curr) => acc + curr.volume, 0), type: 'number', color: 'text-orange-500' }
+                          { title: 'Volume Total', value: financialStats.reduce((acc, curr) => acc + curr.volume, 0), type: 'number', color: 'text-orange-500' },
+                          { title: 'Ticket Médio', value: financialStats.reduce((acc, curr) => acc + curr.transactions, 0) > 0 ? financialStats.reduce((acc, curr) => acc + curr.faturamento, 0) / financialStats.reduce((acc, curr) => acc + curr.transactions, 0) : 0, type: 'currency', color: 'text-purple-600' }
                         ].map((item, idx) => (
                           <div key={idx} className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
                             <p className="text-sm font-medium text-slate-500 mb-1">{item.title}</p>
@@ -1317,6 +1548,170 @@ export default function App() {
                       )}
                     </div>
                   </div>
+                )}
+                
+                {activeTab === 'dispersao_mercados' && (
+                  <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden p-6">
+                    {marketScatterStats.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={500}>
+                        <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                          <XAxis 
+                            type="number" 
+                            dataKey="volumePercent" 
+                            name="Volume (%)" 
+                            tickFormatter={(val) => `${val.toFixed(1)}%`}
+                            tick={{ fill: '#64748b', fontSize: 12 }}
+                            axisLine={{ stroke: '#cbd5e1' }}
+                          />
+                          <YAxis 
+                            type="number" 
+                            dataKey="marginPercent" 
+                            name="Margem Líquida (%)" 
+                            tickFormatter={(val) => `${val.toFixed(1)}%`}
+                            tick={{ fill: '#64748b', fontSize: 12 }}
+                            axisLine={{ stroke: '#cbd5e1' }}
+                            tickLine={false}
+                          />
+                          <ZAxis type="number" dataKey="volume" range={[100, 800]} />
+                          <RechartsTooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomMarketScatterTooltip />} />
+                          <Scatter name="Mercados" data={marketScatterStats}>
+                            {marketScatterStats.map((entry, index) => (
+                              <Cell 
+                                key={`cell-${index}`} 
+                                fill="#8b5cf6" 
+                                fillOpacity={0.7} 
+                                stroke="#7c3aed" 
+                                strokeWidth={2} 
+                              />
+                            ))}
+                          </Scatter>
+                        </ScatterChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-12">
+                        <AlertCircle className="w-10 h-10 text-slate-400 mb-4" />
+                        <p className="text-slate-500 font-medium text-center">
+                          Nenhum dado de mercado encontrado para criar o gráfico.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {activeTab === 'dispersao_produtos' && (
+                  <div className="space-y-6">
+                    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden p-6">
+                      <div className="mb-6 border-b border-slate-100 pb-4">
+                        <h3 className="text-lg font-semibold text-slate-900 mb-2">Análise de Margem vs Volume</h3>
+                        <p className="text-sm text-slate-600 leading-relaxed max-w-4xl">
+                          Neste gráfico, cada ponto representa um produto distinto. <br/>
+                          <strong>Entendendo o tamanho da bolinha:</strong> O tamanho (diâmetro) do ponto é diretamente proporcional ao <strong>Volume Absoluto de Vendas</strong>. 
+                          Uma bolinha maior significa que o produto teve muitas unidades vendidas no período. Bolinhas menores representam produtos que saíram pouco. 
+                          Isso ajuda a identificar rapidamente os "campeões de venda" (bolas grandes) e analisar se a margem deles está saudável (posição no eixo vertical).
+                        </p>
+                      </div>
+                      {productScatterStats.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={700}>
+                        <ScatterChart margin={{ top: 20, right: 30, bottom: 20, left: 20 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                          <XAxis 
+                            type="number" 
+                            dataKey="volumePercent" 
+                            name="Volume (vs 2x Mediana)" 
+                            tickFormatter={(val) => `${val.toFixed(0)}%`}
+                            tick={{ fill: '#64748b', fontSize: 12 }}
+                            axisLine={{ stroke: '#cbd5e1' }}
+                          />
+                          <YAxis 
+                            type="number" 
+                            dataKey="marginPercent" 
+                            name="Margem Líquida (%)" 
+                            tickFormatter={(val) => `${val.toFixed(0)}%`}
+                            tick={{ fill: '#64748b', fontSize: 12 }}
+                            axisLine={{ stroke: '#cbd5e1' }}
+                            tickLine={false}
+                          />
+                          <ZAxis type="number" dataKey="volume" range={[40, 400]} />
+                          <RechartsTooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomProductScatterTooltip />} />
+                          <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                          {Array.from(new Set(productScatterStats.map(p => p.category))).sort().map((cat, idx) => {
+                            const data = productScatterStats.filter(p => p.category === cat);
+                            const color = CATEGORY_COLORS[idx % CATEGORY_COLORS.length];
+                            return (
+                              <Scatter key={cat} name={cat} data={data} fill={color}>
+                                {data.map((entry, index) => (
+                                  <Cell 
+                                    key={`cell-${index}`} 
+                                    fill={color} 
+                                    fillOpacity={0.7} 
+                                    stroke={color} 
+                                    strokeWidth={1} 
+                                  />
+                                ))}
+                              </Scatter>
+                            )
+                          })}
+                        </ScatterChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-12">
+                        <AlertCircle className="w-10 h-10 text-slate-400 mb-4" />
+                        <p className="text-slate-500 font-medium text-center">
+                          Nenhum dado de produto encontrado para criar o gráfico.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                    <div className="p-6 border-b border-slate-200 bg-red-50/30">
+                      <h3 className="text-lg font-semibold text-red-700 flex items-center">
+                        <AlertCircle className="w-5 h-5 mr-2" />
+                        Itens com Preço de Custo Zerado
+                      </h3>
+                      <p className="text-sm text-slate-600 mt-1">
+                        Abaixo estão os produtos cujo custo total é R$ 0,00 (seja por não ter sido cadastrado na planilha ou ajustado automaticamente após o sistema identificar que a margem líquida seria negativa em uma venda).
+                      </p>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-slate-200">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase">Produto / Categoria</th>
+                            <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase">Volume de Vendas</th>
+                            <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase">Faturamento Total</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-slate-200">
+                          {productScatterStats.filter(p => p.totalCost === 0).length > 0 ? (
+                            productScatterStats
+                              .filter(p => p.totalCost === 0)
+                              .sort((a,b) => b.volume - a.volume)
+                              .map(p => (
+                              <tr key={p.name} className="hover:bg-slate-50">
+                                <td className="px-6 py-4 text-sm font-medium text-slate-900">
+                                  {p.name}
+                                  <span className="block text-xs font-normal text-slate-400 mt-0.5">{p.category}</span>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-right text-slate-600">{p.volume} und.</td>
+                                <td className="px-6 py-4 text-sm text-right text-slate-600">
+                                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.faturamento)}
+                                </td>
+                              </tr>
+                            ))
+                          ) : (
+                              <tr>
+                                <td colSpan={3} className="px-6 py-8 text-center text-sm text-slate-500">
+                                  Nenhum item com preço de custo igual a zero.
+                                </td>
+                              </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
                 )}
                 
               </div>
