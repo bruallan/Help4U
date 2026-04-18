@@ -328,6 +328,7 @@ export default function App() {
   const [datasetMaxDate, setDatasetMaxDate] = useState<string>('');
   const [filterStartDate, setFilterStartDate] = useState<string>('');
   const [filterEndDate, setFilterEndDate] = useState<string>('');
+  const [scatterCategoryFilter, setScatterCategoryFilter] = useState<string>('Todas');
 
   const [xDomain, setXDomain] = useState<[number, number]>([0, 10000]);
   const [yDomain, setYDomain] = useState<[number, number]>([0, 100]);
@@ -882,6 +883,15 @@ export default function App() {
     const margins = stats.map(s => s.margin);
     return [Math.min(...margins), Math.max(...margins)];
   }, [stats]);
+
+  const availableCategories = useMemo(() => {
+    return ['Todas', ...Array.from(new Set(productScatterStats.map(p => p.category))).sort()];
+  }, [productScatterStats]);
+
+  const filteredProductScatterStats = useMemo(() => {
+    if (scatterCategoryFilter === 'Todas') return productScatterStats;
+    return productScatterStats.filter(p => p.category === scatterCategoryFilter);
+  }, [productScatterStats, scatterCategoryFilter]);
 
   useEffect(() => {
     if (stats.length > 0) {
@@ -1611,7 +1621,22 @@ export default function App() {
                           Isso ajuda a identificar rapidamente os "campeões de venda" (bolas grandes) e analisar se a margem deles está saudável (posição no eixo vertical).
                         </p>
                       </div>
-                      {productScatterStats.length > 0 ? (
+                      
+                      <div className="mb-4">
+                        <label htmlFor="category-filter" className="block text-sm font-medium text-slate-700 mb-1">Filtrar por Categoria</label>
+                        <select
+                          id="category-filter"
+                          value={scatterCategoryFilter}
+                          onChange={(e) => setScatterCategoryFilter(e.target.value)}
+                          className="border border-slate-200 rounded-lg text-sm px-3 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all bg-slate-50 min-w-[200px]"
+                        >
+                          {availableCategories.map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {filteredProductScatterStats.length > 0 ? (
                       <ResponsiveContainer width="100%" height={700}>
                         <ScatterChart margin={{ top: 20, right: 30, bottom: 20, left: 20 }}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -1635,9 +1660,9 @@ export default function App() {
                           <ZAxis type="number" dataKey="volume" range={[40, 400]} />
                           <RechartsTooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomProductScatterTooltip />} />
                           <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                          {Array.from(new Set(productScatterStats.map(p => p.category))).sort().map((cat, idx) => {
-                            const data = productScatterStats.filter(p => p.category === cat);
-                            const color = CATEGORY_COLORS[idx % CATEGORY_COLORS.length];
+                          {Array.from(new Set(filteredProductScatterStats.map(p => p.category))).sort().map((cat, idx) => {
+                            const data = filteredProductScatterStats.filter(p => p.category === cat);
+                            const color = CATEGORY_COLORS[availableCategories.indexOf(cat) % CATEGORY_COLORS.length];
                             return (
                               <Scatter key={cat} name={cat} data={data} fill={color}>
                                 {data.map((entry, index) => (
@@ -1684,8 +1709,8 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-slate-200">
-                          {productScatterStats.filter(p => p.totalCost === 0).length > 0 ? (
-                            productScatterStats
+                          {filteredProductScatterStats.filter(p => p.totalCost === 0).length > 0 ? (
+                            filteredProductScatterStats
                               .filter(p => p.totalCost === 0)
                               .sort((a,b) => b.volume - a.volume)
                               .map(p => (
