@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { UploadCloud, Search, FileSpreadsheet, AlertCircle, Loader2, LayoutDashboard, ShoppingCart, TrendingUp, Menu, X, ZoomIn, ZoomOut, Download, Wallet, Calendar, ChevronDown, Check, Dot } from 'lucide-react';
+import { UploadCloud, Search, FileSpreadsheet, AlertCircle, Loader2, LayoutDashboard, ShoppingCart, TrendingUp, Menu, X, ZoomIn, ZoomOut, Download, Wallet, Calendar, ChevronDown, Check, Dot, Activity, Sun, Moon } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, ComposedChart, Bar, Line, Legend, ReferenceLine } from 'recharts';
+import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, ComposedChart, Bar, LineChart, Line, Legend, ReferenceLine } from 'recharts';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -65,6 +65,7 @@ interface ProductScatterStat {
   category: string;
   volumePercent: number;
   marginPercent: number;
+  margemUnitaria: number;
   volume: number;
   margemLiquida: number;
   faturamento: number;
@@ -119,21 +120,21 @@ const CustomTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload as ProductStats;
     return (
-      <div className="bg-white p-4 border border-slate-200 shadow-xl rounded-xl text-sm min-w-[200px]">
-        <p className="font-bold text-slate-800 mb-2 border-b pb-2">{data.name}</p>
-        <div className="space-y-1 text-slate-600">
-          <p><span className="font-medium text-slate-700">Volume:</span> {data.volume} unid.</p>
-          <p><span className="font-medium text-slate-700">HHI (Concentração):</span> {data.hhi.toFixed(0)}</p>
-          <p><span className="font-medium text-slate-700">Margem:</span> {data.margin.toFixed(2)}%</p>
-          <p><span className="font-medium text-slate-700">Vendas PIX:</span> {data.pixPercent.toFixed(2)}%</p>
+      <div className="bg-white dark:bg-slate-900 p-4 border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl text-sm min-w-[200px]">
+        <p className="font-bold text-slate-800 dark:text-slate-200 mb-2 border-b dark:border-slate-800 pb-2">{data.name}</p>
+        <div className="space-y-1 text-slate-600 dark:text-slate-400">
+          <p><span className="font-medium text-slate-700 dark:text-slate-300">Volume:</span> {data.volume} unid.</p>
+          <p><span className="font-medium text-slate-700 dark:text-slate-300">HHI (Concentração):</span> {data.hhi?.toFixed(0) ?? 'N/A'}</p>
+          <p><span className="font-medium text-slate-700 dark:text-slate-300">Margem:</span> {data.margin?.toFixed(2) ?? 'N/A'}%</p>
+          <p><span className="font-medium text-slate-700 dark:text-slate-300">Vendas PIX:</span> {data.pixPercent?.toFixed(2) ?? 'N/A'}%</p>
         </div>
-        <div className="mt-3 pt-2 border-t">
+        <div className="mt-3 pt-2 border-t dark:border-slate-800">
           <span className={cn(
             "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
-            data.status === 'Alerta de Risco' && "bg-red-100 text-red-800",
-            data.status === 'Motor da Loja' && "bg-emerald-100 text-emerald-800",
-            data.status === 'Cauda Longa' && "bg-slate-100 text-slate-800",
-            data.status === 'Venda Monopolizada Menor' && "bg-amber-100 text-amber-800"
+            data.status === 'Alerta de Risco' && "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+            data.status === 'Motor da Loja' && "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
+            data.status === 'Cauda Longa' && "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-400",
+            data.status === 'Venda Monopolizada Menor' && "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
           )}>
             {data.status}
           </span>
@@ -152,32 +153,32 @@ const CustomFinancialTooltip = ({ active, payload, label }: any) => {
       new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
     return (
-      <div className="bg-white p-4 border border-slate-200 shadow-xl rounded-xl text-sm min-w-[220px]">
-        <p className="font-bold text-slate-800 mb-2 border-b pb-2">{data.dateStr}</p>
-        <div className="space-y-2 text-slate-600">
+      <div className="bg-white dark:bg-slate-900 p-4 border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl text-sm min-w-[220px]">
+        <p className="font-bold text-slate-800 dark:text-slate-200 mb-2 border-b dark:border-slate-800 pb-2">{data.dateStr}</p>
+        <div className="space-y-2 text-slate-600 dark:text-slate-400">
           <p className="flex justify-between">
-            <span className="font-medium text-slate-700 flex items-center"><span className="w-3 h-3 rounded-full bg-blue-300 mr-2"></span>Faturamento:</span>
-            <span>{formatCurrency(data.faturamento)}</span>
+            <span className="font-medium text-slate-700 dark:text-slate-300 flex items-center"><span className="w-3 h-3 rounded-full bg-blue-300 mr-2"></span>Faturamento:</span>
+            <span className="dark:text-slate-200">{formatCurrency(data.faturamento)}</span>
           </p>
           <p className="flex justify-between">
-            <span className="font-medium text-slate-700 flex items-center"><span className="w-3 h-3 rounded-full bg-blue-500 mr-2"></span>Margem Bruta:</span>
-            <span>{formatCurrency(data.margemBruta)}</span>
+            <span className="font-medium text-slate-700 dark:text-slate-300 flex items-center"><span className="w-3 h-3 rounded-full bg-blue-500 mr-2"></span>Margem Bruta:</span>
+            <span className="dark:text-slate-200">{formatCurrency(data.margemBruta)}</span>
           </p>
           <p className="flex justify-between">
-            <span className="font-medium text-slate-700 flex items-center"><span className="w-3 h-3 rounded-full bg-blue-800 mr-2"></span>Margem Líquida:</span>
-            <span className={cn(data.margemLiquida < 0 ? "text-red-600 font-semibold" : "")}>
+            <span className="font-medium text-slate-700 dark:text-slate-300 flex items-center"><span className="w-3 h-3 rounded-full bg-blue-800 mr-2"></span>Margem Líquida:</span>
+            <span className={cn(data.margemLiquida < 0 ? "text-red-600 dark:text-red-400 font-semibold" : "dark:text-slate-200")}>
               {formatCurrency(data.margemLiquida)}
             </span>
           </p>
-          <div className="border-t my-1"></div>
+          <div className="border-t dark:border-slate-800 my-1"></div>
           <p className="flex justify-between">
-            <span className="font-medium text-slate-700 flex items-center"><span className="w-3 h-3 rounded-full bg-orange-500 mr-2"></span>Volume Vendas:</span>
-            <span>{data.volume} unid.</span>
+            <span className="font-medium text-slate-700 dark:text-slate-300 flex items-center"><span className="w-3 h-3 rounded-full bg-orange-500 mr-2"></span>Volume Vendas:</span>
+            <span className="dark:text-slate-200">{data.volume} unid.</span>
           </p>
-          <div className="border-t my-1"></div>
+          <div className="border-t dark:border-slate-800 my-1"></div>
           <p className="flex justify-between">
-            <span className="font-medium text-slate-700 flex items-center"><span className="w-3 h-3 rounded-full bg-purple-500 mr-2"></span>Ticket Médio:</span>
-            <span>{data.transactions > 0 ? formatCurrency(data.faturamento / data.transactions) : formatCurrency(0)}</span>
+            <span className="font-medium text-slate-700 dark:text-slate-300 flex items-center"><span className="w-3 h-3 rounded-full bg-purple-500 mr-2"></span>Ticket Médio:</span>
+            <span className="dark:text-slate-200">{data.transactions > 0 ? formatCurrency(data.faturamento / data.transactions) : formatCurrency(0)}</span>
           </p>
         </div>
       </div>
@@ -197,8 +198,8 @@ const CustomMarketScatterTooltip = ({ active, payload }: any) => {
       <div className="bg-white p-4 border border-slate-200 shadow-xl rounded-xl text-sm min-w-[200px]">
         <p className="font-bold text-slate-800 mb-2 border-b pb-2">{data.name}</p>
         <div className="space-y-1 text-slate-600">
-          <p><span className="font-medium text-slate-700">Volume (% do Total):</span> {data.volumePercent.toFixed(2)}%</p>
-          <p><span className="font-medium text-slate-700">Margem Líquida (% do Faturamento):</span> {data.marginPercent.toFixed(2)}%</p>
+          <p><span className="font-medium text-slate-700">Volume (% do Total):</span> {data.volumePercent?.toFixed(2)}%</p>
+          <p><span className="font-medium text-slate-700">Margem Líquida (% do Faturamento):</span> {data.marginPercent?.toFixed(2)}%</p>
           <p><span className="font-medium text-slate-700">Volume Absoluto:</span> {data.volume} unid.</p>
           <p><span className="font-medium text-slate-700">Faturamento:</span> {formatCurrency(data.faturamento)}</p>
           <p><span className="font-medium text-slate-700">Margem Líquida (R$):</span> {formatCurrency(data.margemLiquida)}</p>
@@ -213,6 +214,9 @@ const CustomProductScatterTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload as ProductScatterStat;
     
+    // Check if it's a level curve point
+    if (!data.name) return null;
+    
     const formatCurrency = (val: number) => 
       new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
@@ -221,16 +225,102 @@ const CustomProductScatterTooltip = ({ active, payload }: any) => {
         <p className="font-bold text-slate-800 mb-1 border-b pb-1">{data.name}</p>
         <p className="text-xs text-slate-500 mb-2 uppercase font-semibold">{data.category}</p>
         <div className="space-y-1 text-slate-600">
-          <p><span className="font-medium text-slate-700">Volume (vs Top):</span> {data.volumePercent.toFixed(2)}%</p>
-          <p><span className="font-medium text-slate-700">Margem %:</span> {data.marginPercent.toFixed(2)}%</p>
+          <p><span className="font-medium text-slate-700">Volume Relativo:</span> {data.volumePercent?.toFixed(2)}%</p>
+          <p><span className="font-medium text-slate-700">Margem Unitária:</span> {formatCurrency(data.margemUnitaria || 0)}</p>
+          <p><span className="font-medium text-slate-700">Margem %:</span> {data.marginPercent?.toFixed(2)}%</p>
           <p><span className="font-medium text-slate-700">Volume Absoluto:</span> {data.volume} unid.</p>
           <p><span className="font-medium text-slate-700">Faturamento:</span> {formatCurrency(data.faturamento)}</p>
-          <p><span className="font-medium text-slate-700">Margem Líquida:</span> {formatCurrency(data.margemLiquida)}</p>
+          <p><span className="font-medium text-slate-700">Margem Líquida Total:</span> {formatCurrency(data.margemLiquida)}</p>
         </div>
       </div>
     );
   }
   return null;
+};
+
+const ProductDropdown = ({ availableProducts, selectedProducts, onChange }: { availableProducts: string[], selectedProducts: string[], onChange: (s: string[]) => void }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const toggleProduct = (p: string) => {
+    if (selectedProducts.includes(p)) onChange(selectedProducts.filter(x => x !== p));
+    else onChange([...selectedProducts, p]);
+  };
+
+  const toggleAll = () => {
+    if (selectedProducts.length === availableProducts.length) onChange([]);
+    else onChange([...availableProducts]);
+  };
+
+  const filteredProducts = searchTerm.trim() ? availableProducts.filter(p => p.toLowerCase().includes(searchTerm.toLowerCase())) : availableProducts;
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center space-x-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+      >
+        <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+          Produtos ({selectedProducts.length})
+        </span>
+        <ChevronDown className="w-4 h-4 text-slate-400" />
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl z-50 p-2 max-h-[400px] flex flex-col">
+          <input 
+            type="text" 
+            placeholder="Buscar produto..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full text-sm border-b border-slate-200 dark:border-slate-800 p-2 outline-none mb-2 bg-transparent text-slate-900 dark:text-slate-100"
+          />
+          <div 
+            className="flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg cursor-pointer border-b border-slate-100 dark:border-slate-800 mb-1 shrink-0"
+            onClick={toggleAll}
+          >
+            <div className={cn("w-4 h-4 rounded flex items-center justify-center mr-3 border shrink-0", 
+              selectedProducts.length === availableProducts.length ? "bg-blue-600 border-blue-600" : "border-slate-300 dark:border-slate-700"
+            )}>
+              {selectedProducts.length === availableProducts.length && <Check className="w-3 h-3 text-white" />}
+            </div>
+            <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">Selecionar Todos</span>
+          </div>
+          
+          <div className="overflow-y-auto flex-1 min-h-[50px] max-h-[250px]">
+          {filteredProducts.map(prod => {
+            const isSelected = selectedProducts.includes(prod);
+            return (
+              <div 
+                key={prod} 
+                className="flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+                onClick={() => toggleProduct(prod)}
+              >
+                <div className={cn("w-4 h-4 rounded flex items-center justify-center mr-3 border shrink-0", 
+                  isSelected ? "bg-blue-600 border-blue-600" : "border-slate-300 dark:border-slate-700"
+                )}>
+                  {isSelected && <Check className="w-3 h-3 text-white" />}
+                </div>
+                <span className="text-sm text-slate-700 dark:text-slate-300 truncate" title={prod}>{prod}</span>
+              </div>
+            );
+          })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 const UnitDropdown = ({ availableUnits, selectedUnits, onChange }: { availableUnits: string[], selectedUnits: string[], onChange: (s: string[]) => void }) => {
@@ -261,26 +351,26 @@ const UnitDropdown = ({ availableUnits, selectedUnits, onChange }: { availableUn
     <div className="relative" ref={dropdownRef}>
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center space-x-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm hover:bg-slate-50 transition"
+        className="flex items-center space-x-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition"
       >
-        <span className="text-sm font-medium text-slate-700">
+        <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
           Unidades ({selectedUnits.length})
         </span>
         <ChevronDown className="w-4 h-4 text-slate-400" />
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-64 bg-white border border-slate-200 shadow-xl rounded-xl z-50 p-2 max-h-64 overflow-y-auto">
+        <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl z-50 p-2 max-h-64 overflow-y-auto">
           <div 
-            className="flex items-center p-2 hover:bg-slate-50 rounded-lg cursor-pointer border-b border-slate-100 mb-1"
+            className="flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg cursor-pointer border-b border-slate-100 dark:border-slate-800 mb-1"
             onClick={toggleAll}
           >
             <div className={cn("w-4 h-4 rounded flex items-center justify-center mr-3 border", 
-              selectedUnits.length === availableUnits.length ? "bg-blue-600 border-blue-600" : "border-slate-300"
+              selectedUnits.length === availableUnits.length ? "bg-blue-600 border-blue-600" : "border-slate-300 dark:border-slate-700"
             )}>
               {selectedUnits.length === availableUnits.length && <Check className="w-3 h-3 text-white" />}
             </div>
-            <span className="text-sm font-semibold text-slate-800">Selecionar Todas</span>
+            <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">Selecionar Todas</span>
           </div>
           
           {availableUnits.map(unit => {
@@ -288,15 +378,15 @@ const UnitDropdown = ({ availableUnits, selectedUnits, onChange }: { availableUn
             return (
               <div 
                 key={unit} 
-                className="flex items-center p-2 hover:bg-slate-50 rounded-lg cursor-pointer"
+                className="flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
                 onClick={() => toggleUnit(unit)}
               >
                 <div className={cn("w-4 h-4 rounded flex items-center justify-center mr-3 border", 
-                  isSelected ? "bg-blue-600 border-blue-600" : "border-slate-300"
+                  isSelected ? "bg-blue-600 border-blue-600" : "border-slate-300 dark:border-slate-700"
                 )}>
                   {isSelected && <Check className="w-3 h-3 text-white" />}
                 </div>
-                <span className="text-sm text-slate-700 truncate">{unit}</span>
+                <span className="text-sm text-slate-700 dark:text-slate-300 truncate">{unit}</span>
               </div>
             );
           })}
@@ -307,10 +397,31 @@ const UnitDropdown = ({ availableUnits, selectedUnits, onChange }: { availableUn
 };
 
 export default function App() {
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('theme');
+      return saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
+
   const [stats, setStats] = useState<ProductStats[]>([]);
   const [financialStats, setFinancialStats] = useState<DailyFinancialStats[]>([]);
   const [marketScatterStats, setMarketScatterStats] = useState<MarketScatterStat[]>([]);
   const [productScatterStats, setProductScatterStats] = useState<ProductScatterStat[]>([]);
+  const [dailyProductPerformances, setDailyProductPerformances] = useState<any[]>([]);
+  const [desempenhoSelectedProducts, setDesempenhoSelectedProducts] = useState<string[]>([]);
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -318,7 +429,7 @@ export default function App() {
   const [fileName, setFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const [activeTab, setActiveTab] = useState<'vendas' | 'indicadores' | 'lucro_fluxo' | 'dispersao_mercados' | 'dispersao_produtos'>('vendas');
+  const [activeTab, setActiveTab] = useState<'vendas' | 'indicadores' | 'lucro_fluxo' | 'dispersao_mercados' | 'dispersao_produtos' | 'desempenho_tipo'>('vendas');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   const [rawData, setRawData] = useState<MappedRow[] | null>(null);
@@ -514,6 +625,7 @@ export default function App() {
         let globalMaxDay: Date | null = null;
         const globalBuyers = new Set<string>();
         const dailyFinances = new Map<string, DailyFinancialStats>();
+        const dailyProdPerfMap = new Map<string, any>();
         
         // Market stats map to calculate "Dispersão"
         interface MarketStatsBuilder {
@@ -620,6 +732,16 @@ export default function App() {
             deduction: 0
           });
         }
+        
+        if (!dailyProdPerfMap.has(dateStr)) {
+          dailyProdPerfMap.set(dateStr, {
+            date: row.dayDate,
+            dateStr: row.dayDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+          });
+        }
+        const dayPerf = dailyProdPerfMap.get(dateStr)!;
+        dayPerf[nameStr] = (dayPerf[nameStr] || 0) + 1;
+
         const dayStats = dailyFinances.get(dateStr)!;
         
         dayStats.volume += 1;
@@ -803,6 +925,9 @@ export default function App() {
         day.margemLiquida = day.margemBruta - day.deduction;
       });
       setFinancialStats(sortedDays);
+
+      const sortedDailyPerf = Array.from(dailyProdPerfMap.values()).sort((a, b) => a.date.getTime() - b.date.getTime());
+      setDailyProductPerformances(sortedDailyPerf);
       
       const marketArray = Array.from(marketStatsMap.values());
       const globalVolume = marketArray.reduce((acc, m) => acc + m.volume, 0);
@@ -827,6 +952,7 @@ export default function App() {
          categorySet.add(p.category);
          return {
            ...p,
+           margemUnitaria: p.volume > 0 ? p.margemLiquida / p.volume : 0,
            volumePercent: medianVolume > 0 ? (p.volume / (medianVolume * 2)) * 100 : 0
          };
       });
@@ -892,6 +1018,36 @@ export default function App() {
     if (scatterCategoryFilter === 'Todas') return productScatterStats;
     return productScatterStats.filter(p => p.category === scatterCategoryFilter);
   }, [productScatterStats, scatterCategoryFilter]);
+
+  const levelCurvesData = useMemo(() => {
+    if (productScatterStats.length === 0) return [];
+    
+    const volumes = productScatterStats.map(s => s.volume).sort((a, b) => a - b);
+    const medianVolume = volumes[Math.floor(volumes.length / 2)] || 0;
+    if (medianVolume === 0) return [];
+    
+    // Gerando pontos para as curvas de isovalor da Margem Líquida Total = Volume * MargemUnitaria
+    // Y (Margem Unitária R$) = E / VolumeAbsoluto
+    // Sabendo que X é (VolumeAbsoluto / (2*Media)) * 100
+    // Logo: VolumeAbsoluto = X * 2 * Mediana / 100
+    // Y = (E * 100) / (X * 2 * Mediana)
+    const points = [];
+    // Eixo X de 5% a 500%
+    for (let x = 1; x <= 500; x += 2) {
+      const volAbsoluto = (x * 2 * medianVolume) / 100;
+      if (volAbsoluto === 0) continue;
+
+      points.push({
+        volumePercent: x,
+        faixa_50: 50 / volAbsoluto,
+        faixa_100: 100 / volAbsoluto,
+        faixa_150: 150 / volAbsoluto,
+        faixa_200: 200 / volAbsoluto,
+        faixa_300: 300 / volAbsoluto,
+      });
+    }
+    return points;
+  }, [productScatterStats]);
 
   useEffect(() => {
     if (stats.length > 0) {
@@ -997,7 +1153,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50 font-sans overflow-hidden">
+    <div className="flex h-screen bg-slate-50 dark:bg-slate-950 font-sans overflow-hidden transition-colors duration-300">
       
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
@@ -1009,27 +1165,27 @@ export default function App() {
 
       {/* Sidebar */}
       <aside className={cn(
-        "fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 flex flex-col transition-transform duration-300 ease-in-out md:relative md:translate-x-0",
+        "fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col transition-transform duration-300 ease-in-out md:relative md:translate-x-0",
         isSidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-          <div className="flex items-center space-x-2 text-blue-600">
+        <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+          <div className="flex items-center space-x-2 text-blue-600 dark:text-blue-400">
             <LayoutDashboard className="w-6 h-6" />
-            <span className="text-xl font-bold tracking-tight text-slate-900">Help4U</span>
+            <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">Help4U</span>
           </div>
           <button className="md:hidden text-slate-500" onClick={() => setIsSidebarOpen(false)}>
             <X className="w-5 h-5" />
           </button>
         </div>
         
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           <button
             onClick={() => { setActiveTab('vendas'); setIsSidebarOpen(false); }}
             className={cn(
               "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
               activeTab === 'vendas' 
-                ? "bg-blue-50 text-blue-700" 
-                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" 
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
             )}
           >
             <ShoppingCart className="w-5 h-5" />
@@ -1041,8 +1197,8 @@ export default function App() {
             className={cn(
               "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
               activeTab === 'indicadores' 
-                ? "bg-blue-50 text-blue-700" 
-                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" 
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
             )}
           >
             <TrendingUp className="w-5 h-5" />
@@ -1054,8 +1210,8 @@ export default function App() {
             className={cn(
               "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
               activeTab === 'lucro_fluxo' 
-                ? "bg-blue-50 text-blue-700" 
-                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" 
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
             )}
           >
             <Wallet className="w-5 h-5" />
@@ -1067,8 +1223,8 @@ export default function App() {
             className={cn(
               "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
               activeTab === 'dispersao_mercados' 
-                ? "bg-blue-50 text-blue-700" 
-                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" 
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
             )}
           >
             <Dot className="w-5 h-5" />
@@ -1080,34 +1236,66 @@ export default function App() {
             className={cn(
               "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
               activeTab === 'dispersao_produtos' 
-                ? "bg-blue-50 text-blue-700" 
-                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" 
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
             )}
           >
             <Dot className="w-5 h-5" />
             <span>Dispersão Produtos</span>
           </button>
+          
+          <button
+            onClick={() => { setActiveTab('desempenho_tipo'); setIsSidebarOpen(false); }}
+            className={cn(
+              "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
+              activeTab === 'desempenho_tipo' 
+                ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" 
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
+            )}
+          >
+            <Activity className="w-5 h-5" />
+            <span>Desempenho Tipo</span>
+          </button>
         </nav>
+
+        <div className="p-4 border-t border-slate-100 dark:border-slate-800">
+          <button
+            onClick={() => setIsDarkMode(!isDarkMode)}
+            className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+          >
+            {isDarkMode ? <Sun className="w-5 h-5 text-amber-500" /> : <Moon className="w-5 h-5 text-blue-600" />}
+            <span>{isDarkMode ? 'Modo Claro' : 'Modo Escuro'}</span>
+          </button>
+        </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden">
+      <main className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
         {/* Mobile Header */}
-        <header className="bg-white border-b border-slate-200 px-4 py-3 flex items-center md:hidden">
-          <button onClick={() => setIsSidebarOpen(true)} className="text-slate-500 p-1">
+        <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-3 flex items-center justify-between md:hidden transition-colors duration-300">
+          <button onClick={() => setIsSidebarOpen(true)} className="text-slate-500 dark:text-slate-400 p-1">
             <Menu className="w-6 h-6" />
           </button>
-          <span className="ml-3 text-lg font-semibold text-slate-900">Help4U</span>
+          <div className="flex items-center space-x-2 text-blue-600 dark:text-blue-400">
+            <LayoutDashboard className="w-5 h-5" />
+            <span className="font-bold">Help4U</span>
+          </div>
+          <button 
+            onClick={() => setIsDarkMode(!isDarkMode)}
+            className="p-1 text-slate-500 dark:text-slate-400"
+          >
+            {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+          </button>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-6 md:p-10">
+        <div className="flex-1 overflow-y-auto p-6 md:p-10 bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
           <div className="max-w-6xl mx-auto space-y-8">
             
             <header>
-              <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-                {activeTab === 'vendas' ? 'Dashboard de Vendas' : activeTab === 'lucro_fluxo' ? 'Lucro e Fluxo Diário' : activeTab === 'dispersao_mercados' ? 'Dispersão de Mercados' : activeTab === 'dispersao_produtos' ? 'Dispersão de Produtos' : 'Indicadores de Risco'}
+              <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
+                {activeTab === 'vendas' ? 'Dashboard de Vendas' : activeTab === 'lucro_fluxo' ? 'Lucro e Fluxo Diário' : activeTab === 'dispersao_mercados' ? 'Dispersão de Mercados' : activeTab === 'dispersao_produtos' ? 'Dispersão de Produtos' : activeTab === 'desempenho_tipo' ? 'Desempenho Tipo' : 'Indicadores de Risco'}
               </h1>
-              <p className="text-slate-500 mt-2">
+              <p className="text-slate-500 dark:text-slate-400 mt-2">
                 {activeTab === 'vendas' 
                   ? 'Importe sua planilha de vendas para calcular a velocidade média e o tempo de venda por produto.'
                   : activeTab === 'lucro_fluxo' 
@@ -1116,6 +1304,8 @@ export default function App() {
                   ? 'Analise a relação entre o share de volume e a margem líquida percentual de cada unidade.'
                   : activeTab === 'dispersao_produtos'
                   ? 'Visualize a alta performance vs. rentabilidade de cada produto considerando o ticket isolado por categoria.'
+                  : activeTab === 'desempenho_tipo'
+                  ? 'Acompanhe a linha do tempo e o desempenho de volume diário dos produtos selecionados.'
                   : 'Matriz de Risco de Demanda e Estoque baseada em Volume, Penetração e Venda Cega.'}
               </p>
             </header>
@@ -1131,8 +1321,8 @@ export default function App() {
                   className={cn(
                     "relative flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-2xl transition-all cursor-pointer overflow-hidden",
                     isDragging 
-                      ? "border-blue-500 bg-blue-50" 
-                      : "border-slate-300 bg-white hover:bg-slate-50 hover:border-slate-400",
+                      ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" 
+                      : "border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-600",
                     isLoading && "pointer-events-none opacity-70"
                   )}
                 >
@@ -1147,18 +1337,18 @@ export default function App() {
                   {isLoading ? (
                     <div className="flex flex-col items-center space-y-4">
                       <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
-                      <p className="text-sm font-medium text-slate-600">Processando planilha...</p>
+                      <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Processando planilha...</p>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center space-y-4 text-center p-6">
-                      <div className="p-4 bg-blue-100 text-blue-600 rounded-full">
+                      <div className="p-4 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full">
                         <UploadCloud className="w-8 h-8" />
                       </div>
                       <div>
-                        <p className="text-base font-semibold text-slate-700">
+                        <p className="text-base font-semibold text-slate-700 dark:text-slate-200">
                           Clique para enviar ou arraste sua planilha aqui
                         </p>
-                        <p className="text-sm text-slate-500 mt-1">
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                           Suporta arquivos .xlsx, .xls e .csv
                         </p>
                       </div>
@@ -1167,7 +1357,7 @@ export default function App() {
                 </div>
 
                 {error && (
-                  <div className="flex items-center space-x-3 p-4 bg-red-50 text-red-700 rounded-xl border border-red-200">
+                  <div className="flex items-center space-x-3 p-4 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-xl border border-red-200 dark:border-red-800">
                     <AlertCircle className="w-5 h-5 flex-shrink-0" />
                     <p className="text-sm font-medium">{error}</p>
                   </div>
@@ -1177,8 +1367,8 @@ export default function App() {
 
             {/* Global Filters */}
             {rawData && (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
-                <div className="flex items-center space-x-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl">
+                <div className="flex items-center space-x-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 shadow-sm">
                   <Calendar className="w-4 h-4 text-slate-400" />
                   <input 
                     type="date" 
@@ -1186,7 +1376,7 @@ export default function App() {
                     min={datasetMinDate}
                     max={filterEndDate || datasetMaxDate}
                     onChange={(e) => setFilterStartDate(e.target.value)}
-                    className="text-sm border-none focus:ring-0 p-1 text-slate-700 bg-transparent outline-none max-w-[125px]" 
+                    className="text-sm border-none focus:ring-0 p-1 text-slate-700 dark:text-slate-300 bg-transparent outline-none max-w-[125px]" 
                   />
                   <span className="text-slate-400 text-sm">até</span>
                   <input 
@@ -1195,7 +1385,7 @@ export default function App() {
                     min={filterStartDate || datasetMinDate}
                     max={datasetMaxDate}
                     onChange={(e) => setFilterEndDate(e.target.value)}
-                    className="text-sm border-none focus:ring-0 p-1 text-slate-700 bg-transparent outline-none max-w-[125px]" 
+                    className="text-sm border-none focus:ring-0 p-1 text-slate-700 dark:text-slate-300 bg-transparent outline-none max-w-[125px]" 
                   />
                 </div>
                 
@@ -1336,25 +1526,25 @@ export default function App() {
                 
                 {activeTab === 'indicadores' && (
                   <div className="space-y-6">
-                    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-6">
                     <div className="mb-6 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                       <div>
-                        <h3 className="text-lg font-semibold text-slate-900">Matriz de Risco de Demanda e Estoque</h3>
-                        <p className="text-sm text-slate-500 mt-1">
-                          Use os botões <kbd className="px-1.5 py-0.5 bg-slate-200 rounded-md text-xs font-mono font-semibold text-slate-700">+</kbd> e <kbd className="px-1.5 py-0.5 bg-slate-200 rounded-md text-xs font-mono font-semibold text-slate-700">-</kbd> para dar zoom. Clique e arraste no gráfico para percorrer os dados. Bolhas maiores indicam maior margem. Bolhas <span className="text-amber-500 font-medium">laranjas</span> indicam alto índice de Venda Cega (PIX &gt; 40%).
+                        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Matriz de Risco de Demanda e Estoque</h3>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                          Use os botões <kbd className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-800 rounded-md text-xs font-mono font-semibold text-slate-700 dark:text-slate-300">+</kbd> e <kbd className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-800 rounded-md text-xs font-mono font-semibold text-slate-700 dark:text-slate-300">-</kbd> para dar zoom. Clique e arraste no gráfico para percorrer os dados. Bolhas maiores indicam maior margem. Bolhas <span className="text-amber-500 font-medium">laranjas</span> indicam alto índice de Venda Cega (PIX &gt; 40%).
                         </p>
                       </div>
                       <div className="flex items-center space-x-2">
                         <button 
                           onClick={handleZoomIn}
-                          className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors"
+                          className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg transition-colors"
                           title="Aproximar (Zoom In)"
                         >
                           <ZoomIn className="w-5 h-5" />
                         </button>
                         <button 
                           onClick={handleZoomOut}
-                          className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors"
+                          className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg transition-colors"
                           title="Afastar (Zoom Out)"
                         >
                           <ZoomOut className="w-5 h-5" />
@@ -1366,7 +1556,7 @@ export default function App() {
                               setYDomain([0, maxVol]); 
                               setIsZoomed(false);
                             }}
-                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-xl transition-colors whitespace-nowrap"
+                            className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm font-medium rounded-xl transition-colors whitespace-nowrap"
                           >
                             Resetar Zoom
                           </button>
@@ -1377,7 +1567,7 @@ export default function App() {
                     <div 
                       ref={chartContainerRef}
                       className={cn(
-                        "w-full bg-slate-50 rounded-xl border border-slate-100 p-4 select-none",
+                        "w-full bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-100 dark:border-slate-800 p-4 select-none",
                         isPanning ? "cursor-grabbing" : "cursor-grab"
                       )}
                       onMouseDown={handleMouseDown}
@@ -1387,15 +1577,15 @@ export default function App() {
                     >
                       <ResponsiveContainer width="100%" height={500}>
                         <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                          <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? '#334155' : '#e2e8f0'} />
                           <XAxis 
                             type="number" 
                             dataKey="hhi" 
                             name="HHI" 
                             domain={xDomain}
                             allowDataOverflow
-                            tick={{ fill: '#64748b', fontSize: 12 }}
-                            axisLine={{ stroke: '#cbd5e1' }}
+                            tick={{ fill: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 12 }}
+                            axisLine={{ stroke: isDarkMode ? '#334155' : '#cbd5e1' }}
                           />
                           <YAxis 
                             type="number" 
@@ -1403,8 +1593,8 @@ export default function App() {
                             name="Volume" 
                             domain={yDomain}
                             allowDataOverflow
-                            tick={{ fill: '#64748b', fontSize: 12 }}
-                            axisLine={{ stroke: '#cbd5e1' }}
+                            tick={{ fill: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 12 }}
+                            axisLine={{ stroke: isDarkMode ? '#334155' : '#cbd5e1' }}
                           />
                           <ZAxis 
                             type="number" 
@@ -1477,14 +1667,14 @@ export default function App() {
                     {financialStats.length > 0 && (
                       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                         {[
-                          { title: 'Faturamento Total', value: financialStats.reduce((acc, curr) => acc + curr.faturamento, 0), type: 'currency', color: 'text-blue-400' },
-                          { title: 'Margem Bruta Total', value: financialStats.reduce((acc, curr) => acc + curr.margemBruta, 0), type: 'currency', color: 'text-blue-500' },
-                          { title: 'Margem Líquida Total', value: financialStats.reduce((acc, curr) => acc + curr.margemLiquida, 0), type: 'currency', color: 'text-blue-800' },
-                          { title: 'Volume Total', value: financialStats.reduce((acc, curr) => acc + curr.volume, 0), type: 'number', color: 'text-orange-500' },
-                          { title: 'Ticket Médio', value: financialStats.reduce((acc, curr) => acc + curr.transactions, 0) > 0 ? financialStats.reduce((acc, curr) => acc + curr.faturamento, 0) / financialStats.reduce((acc, curr) => acc + curr.transactions, 0) : 0, type: 'currency', color: 'text-purple-600' }
+                          { title: 'Faturamento Total', value: financialStats.reduce((acc, curr) => acc + curr.faturamento, 0), type: 'currency', color: 'text-blue-400 dark:text-blue-300' },
+                          { title: 'Margem Bruta Total', value: financialStats.reduce((acc, curr) => acc + curr.margemBruta, 0), type: 'currency', color: 'text-blue-500 dark:text-blue-400' },
+                          { title: 'Margem Líquida Total', value: financialStats.reduce((acc, curr) => acc + curr.margemLiquida, 0), type: 'currency', color: 'text-blue-800 dark:text-blue-500' },
+                          { title: 'Volume Total', value: financialStats.reduce((acc, curr) => acc + curr.volume, 0), type: 'number', color: 'text-orange-500 dark:text-orange-400' },
+                          { title: 'Ticket Médio', value: financialStats.reduce((acc, curr) => acc + curr.transactions, 0) > 0 ? financialStats.reduce((acc, curr) => acc + curr.faturamento, 0) / financialStats.reduce((acc, curr) => acc + curr.transactions, 0) : 0, type: 'currency', color: 'text-purple-600 dark:text-purple-400' }
                         ].map((item, idx) => (
-                          <div key={idx} className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
-                            <p className="text-sm font-medium text-slate-500 mb-1">{item.title}</p>
+                          <div key={idx} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-5 transition-colors">
+                            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">{item.title}</p>
                             <p className={cn("text-2xl font-bold", item.color)}>
                               {item.type === 'currency' 
                                 ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.value)
@@ -1495,35 +1685,35 @@ export default function App() {
                       </div>
                     )}
 
-                    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden p-6">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden p-6 transition-colors">
                       {financialStats.length > 0 ? (
                         <ResponsiveContainer width="100%" height={500}>
                           <ComposedChart
                             data={financialStats}
                             margin={{ top: 20, right: 20, bottom: 20, left: 20 }}
                           >
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#334155' : '#e2e8f0'} />
                             <XAxis 
                               dataKey="dateStr" 
-                              tick={{ fill: '#64748b', fontSize: 12 }}
-                              axisLine={{ stroke: '#cbd5e1' }}
+                              tick={{ fill: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 12 }}
+                              axisLine={{ stroke: isDarkMode ? '#334155' : '#cbd5e1' }}
                               tickLine={false}
                             />
                             <YAxis 
                               yAxisId="left" 
                               tickFormatter={(value) => `R$ ${value}`}
-                              tick={{ fill: '#64748b', fontSize: 12 }}
+                              tick={{ fill: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 12 }}
                               axisLine={false}
                               tickLine={false}
                             />
                             <YAxis 
                               yAxisId="right" 
                               orientation="right" 
-                              tick={{ fill: '#64748b', fontSize: 12 }}
+                              tick={{ fill: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 12 }}
                               axisLine={false}
                               tickLine={false}
                             />
-                            <RechartsTooltip content={<CustomFinancialTooltip />} cursor={{ fill: '#f1f5f9' }} />
+                            <RechartsTooltip content={<CustomFinancialTooltip />} cursor={{ fill: isDarkMode ? '#1e293b' : '#f1f5f9' }} />
                             <Legend wrapperStyle={{ paddingTop: '20px' }} />
                             
                             <Bar yAxisId="left" dataKey="faturamento" name="Faturamento" fill="#93c5fd" radius={[4, 4, 0, 0]} maxBarSize={40} />
@@ -1565,22 +1755,22 @@ export default function App() {
                     {marketScatterStats.length > 0 ? (
                       <ResponsiveContainer width="100%" height={500}>
                         <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#334155' : '#e2e8f0'} />
                           <XAxis 
                             type="number" 
                             dataKey="volumePercent" 
                             name="Volume (%)" 
-                            tickFormatter={(val) => `${val.toFixed(1)}%`}
-                            tick={{ fill: '#64748b', fontSize: 12 }}
-                            axisLine={{ stroke: '#cbd5e1' }}
+                            tickFormatter={(val) => typeof val === 'number' ? `${val.toFixed(1)}%` : ''}
+                            tick={{ fill: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 12 }}
+                            axisLine={{ stroke: isDarkMode ? '#334155' : '#cbd5e1' }}
                           />
                           <YAxis 
                             type="number" 
                             dataKey="marginPercent" 
                             name="Margem Líquida (%)" 
-                            tickFormatter={(val) => `${val.toFixed(1)}%`}
-                            tick={{ fill: '#64748b', fontSize: 12 }}
-                            axisLine={{ stroke: '#cbd5e1' }}
+                            tickFormatter={(val) => typeof val === 'number' ? `${val.toFixed(1)}%` : ''}
+                            tick={{ fill: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 12 }}
+                            axisLine={{ stroke: isDarkMode ? '#334155' : '#cbd5e1' }}
                             tickLine={false}
                           />
                           <ZAxis type="number" dataKey="volume" range={[100, 800]} />
@@ -1611,24 +1801,44 @@ export default function App() {
                 
                 {activeTab === 'dispersao_produtos' && (
                   <div className="space-y-6">
-                    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden p-6">
-                      <div className="mb-6 border-b border-slate-100 pb-4">
-                        <h3 className="text-lg font-semibold text-slate-900 mb-2">Análise de Margem vs Volume</h3>
-                        <p className="text-sm text-slate-600 leading-relaxed max-w-4xl">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden p-6 transition-colors">
+                      <div className="mb-6 border-b border-slate-100 dark:border-slate-800 pb-4">
+                        <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Análise de Margem vs Volume</h3>
+                        <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed max-w-4xl">
                           Neste gráfico, cada ponto representa um produto distinto. <br/>
                           <strong>Entendendo o tamanho da bolinha:</strong> O tamanho (diâmetro) do ponto é diretamente proporcional ao <strong>Volume Absoluto de Vendas</strong>. 
                           Uma bolinha maior significa que o produto teve muitas unidades vendidas no período. Bolinhas menores representam produtos que saíram pouco. 
                           Isso ajuda a identificar rapidamente os "campeões de venda" (bolas grandes) e analisar se a margem deles está saudável (posição no eixo vertical).
                         </p>
+                        
+                        <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl text-sm text-blue-800 dark:text-blue-300">
+                          <h4 className="font-bold flex items-center mb-2">
+                            <Activity className="w-4 h-4 mr-2" />
+                            Matemática das Faixas de Margem (Curvas de Nível)
+                          </h4>
+                          <p className="mb-2">
+                            No gráfico abaixo, adicionamos curvas tracejadas que representam as <strong>Zonas de Margem Líquida Total (R$)</strong>.
+                            Dois produtos podem gerar os mesmos R$ 50 de lucro de formas diferentes: um com muito volume e margem unitária pequena, outro com pouco volume e margem unitária grande.
+                          </p>
+                          <div className="bg-white dark:bg-slate-950 p-3 rounded shadow-sm inline-block font-mono text-xs text-slate-700 dark:text-slate-300 mt-2 mb-2 w-full md:w-auto overflow-x-auto">
+                            Equação da Margem Unitária:<br/>
+                            <span className="font-bold">M_unit = Preço_Venda × (1 - Repasse) - Custo</span><br/><br/>
+                            Fórmula das Curvas de Nível (Onde E = Espaçamento, ex: 50, 100, 150):<br/>
+                            <span className="font-bold">Margem Unitária (Y) = E / Volume Absolute (X)</span>
+                          </div>
+                          <p>
+                            Isso cria o padrão de "escorregador" (uma hipérbole). Quanto mais para a direita (Alto Volume), menor a Margem Unitária necessária para encostar na linha de R$ 100, por exemplo.
+                          </p>
+                        </div>
                       </div>
                       
                       <div className="mb-4">
-                        <label htmlFor="category-filter" className="block text-sm font-medium text-slate-700 mb-1">Filtrar por Categoria</label>
+                        <label htmlFor="category-filter" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Filtrar por Categoria</label>
                         <select
                           id="category-filter"
                           value={scatterCategoryFilter}
                           onChange={(e) => setScatterCategoryFilter(e.target.value)}
-                          className="border border-slate-200 rounded-lg text-sm px-3 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all bg-slate-50 min-w-[200px]"
+                          className="border border-slate-200 dark:border-slate-800 rounded-lg text-sm px-3 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-w-[200px]"
                         >
                           {availableCategories.map(cat => (
                             <option key={cat} value={cat}>{cat}</option>
@@ -1638,33 +1848,53 @@ export default function App() {
 
                       {filteredProductScatterStats.length > 0 ? (
                       <ResponsiveContainer width="100%" height={700}>
-                        <ScatterChart margin={{ top: 20, right: 30, bottom: 20, left: 20 }}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                        <ComposedChart margin={{ top: 20, right: 30, bottom: 20, left: 20 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#334155' : '#e2e8f0'} />
                           <XAxis 
                             type="number" 
                             dataKey="volumePercent" 
                             name="Volume (vs 2x Mediana)" 
-                            tickFormatter={(val) => `${val.toFixed(0)}%`}
-                            tick={{ fill: '#64748b', fontSize: 12 }}
-                            axisLine={{ stroke: '#cbd5e1' }}
+                            domain={[0, 'auto']}
+                            tickFormatter={(val) => typeof val === 'number' ? `${val.toFixed(0)}%` : ''}
+                            tick={{ fill: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 12 }}
+                            axisLine={{ stroke: isDarkMode ? '#334155' : '#cbd5e1' }}
                           />
                           <YAxis 
                             type="number" 
-                            dataKey="marginPercent" 
-                            name="Margem Líquida (%)" 
-                            tickFormatter={(val) => `${val.toFixed(0)}%`}
-                            tick={{ fill: '#64748b', fontSize: 12 }}
-                            axisLine={{ stroke: '#cbd5e1' }}
+                            dataKey="margemUnitaria" 
+                            name="Margem Unitária (R$)" 
+                            tickFormatter={(val) => typeof val === 'number' ? `R$ ${val.toFixed(2)}` : ''}
+                            tick={{ fill: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 12 }}
+                            axisLine={{ stroke: isDarkMode ? '#334155' : '#cbd5e1' }}
                             tickLine={false}
                           />
                           <ZAxis type="number" dataKey="volume" range={[40, 400]} />
                           <RechartsTooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomProductScatterTooltip />} />
                           <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                          
+                          {/* Curvas de Nível (Iso-Margem Líquida Total) */}
+                          {[50, 100, 150, 200, 300, 500].map(E => (
+                            <Line
+                              key={`faixa_${E}`}
+                              data={levelCurvesData}
+                              type="monotone"
+                              dataKey={`faixa_${E}`}
+                              name={`Zona R$ ${E}`}
+                              stroke="#94a3b8"
+                              strokeWidth={2}
+                              strokeDasharray="5 5"
+                              dot={false}
+                              activeDot={false}
+                              isAnimationActive={false}
+                            />
+                          ))}
+
                           {Array.from(new Set(filteredProductScatterStats.map(p => p.category))).sort().map((cat, idx) => {
-                            const data = filteredProductScatterStats.filter(p => p.category === cat);
-                            const color = CATEGORY_COLORS[availableCategories.indexOf(cat) % CATEGORY_COLORS.length];
+                            const categoryName = cat as string;
+                            const data = filteredProductScatterStats.filter(p => p.category === categoryName);
+                            const color = CATEGORY_COLORS[availableCategories.indexOf(categoryName) % CATEGORY_COLORS.length];
                             return (
-                              <Scatter key={cat} name={cat} data={data} fill={color}>
+                              <Scatter key={categoryName} name={categoryName} data={data} fill={color}>
                                 {data.map((entry, index) => (
                                   <Cell 
                                     key={`cell-${index}`} 
@@ -1677,7 +1907,7 @@ export default function App() {
                               </Scatter>
                             )
                           })}
-                        </ScatterChart>
+                        </ComposedChart>
                       </ResponsiveContainer>
                     ) : (
                       <div className="flex flex-col items-center justify-center py-12">
@@ -1689,45 +1919,45 @@ export default function App() {
                     )}
                   </div>
 
-                  <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                    <div className="p-6 border-b border-slate-200 bg-red-50/30">
-                      <h3 className="text-lg font-semibold text-red-700 flex items-center">
+                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden transition-colors">
+                    <div className="p-6 border-b border-slate-200 dark:border-slate-800 bg-red-50/30 dark:bg-red-900/10">
+                      <h3 className="text-lg font-semibold text-red-700 dark:text-red-400 flex items-center">
                         <AlertCircle className="w-5 h-5 mr-2" />
                         Itens com Preço de Custo Zerado
                       </h3>
-                      <p className="text-sm text-slate-600 mt-1">
+                      <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
                         Abaixo estão os produtos cujo custo total é R$ 0,00 (seja por não ter sido cadastrado na planilha ou ajustado automaticamente após o sistema identificar que a margem líquida seria negativa em uma venda).
                       </p>
                     </div>
                     <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-slate-200">
-                        <thead className="bg-slate-50">
+                      <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
+                        <thead className="bg-slate-50 dark:bg-slate-950">
                           <tr>
-                            <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase">Produto / Categoria</th>
-                            <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase">Volume de Vendas</th>
-                            <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase">Faturamento Total</th>
+                            <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Produto / Categoria</th>
+                            <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Volume de Vendas</th>
+                            <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Faturamento Total</th>
                           </tr>
                         </thead>
-                        <tbody className="bg-white divide-y divide-slate-200">
+                        <tbody className="bg-white dark:bg-slate-900 divide-y divide-slate-200 dark:divide-slate-800">
                           {filteredProductScatterStats.filter(p => p.totalCost === 0).length > 0 ? (
                             filteredProductScatterStats
                               .filter(p => p.totalCost === 0)
                               .sort((a,b) => b.volume - a.volume)
                               .map(p => (
-                              <tr key={p.name} className="hover:bg-slate-50">
-                                <td className="px-6 py-4 text-sm font-medium text-slate-900">
+                              <tr key={p.name} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                                <td className="px-6 py-4 text-sm font-medium text-slate-900 dark:text-slate-100">
                                   {p.name}
-                                  <span className="block text-xs font-normal text-slate-400 mt-0.5">{p.category}</span>
+                                  <span className="block text-xs font-normal text-slate-400 dark:text-slate-500 mt-0.5">{p.category}</span>
                                 </td>
-                                <td className="px-6 py-4 text-sm text-right text-slate-600">{p.volume} und.</td>
-                                <td className="px-6 py-4 text-sm text-right text-slate-600">
+                                <td className="px-6 py-4 text-sm text-right text-slate-600 dark:text-slate-400">{p.volume} und.</td>
+                                <td className="px-6 py-4 text-sm text-right text-slate-600 dark:text-slate-400">
                                   {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.faturamento)}
                                 </td>
                               </tr>
                             ))
                           ) : (
                               <tr>
-                                <td colSpan={3} className="px-6 py-8 text-center text-sm text-slate-500">
+                                <td colSpan={3} className="px-6 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
                                   Nenhum item com preço de custo igual a zero.
                                 </td>
                               </tr>
@@ -1737,6 +1967,146 @@ export default function App() {
                     </div>
                   </div>
                 </div>
+                )}
+                
+                {activeTab === 'desempenho_tipo' && (
+                  <div className="space-y-6">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-6 overflow-hidden transition-colors">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 space-y-4 md:space-y-0">
+                        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Análise de Volume por Produto</h3>
+                        <div className="flex items-center space-x-3">
+                          <ProductDropdown 
+                            availableProducts={stats.map(s => s.name).sort()}
+                            selectedProducts={desempenhoSelectedProducts} 
+                            onChange={setDesempenhoSelectedProducts}
+                          />
+                        </div>
+                      </div>
+                      
+                      {dailyProductPerformances.length > 0 ? (
+                        <div className="flex flex-col xl:flex-row gap-6">
+                          <div className="flex-1 h-[800px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={dailyProductPerformances.map(day => {
+                                let totalSelected = 0;
+                                desempenhoSelectedProducts.forEach(p => { totalSelected += (day[p] as number) || 0; });
+                                return { ...day, TotalSelected: totalSelected };
+                              })} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#334155' : '#e2e8f0'} />
+                                <XAxis dataKey="dateStr" tick={{ fill: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 12 }} axisLine={{ stroke: isDarkMode ? '#334155' : '#cbd5e1' }} tickMargin={10} />
+                                <YAxis tick={{ fill: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
+                                <RechartsTooltip 
+                                  content={({ active, payload, label }: any) => {
+                                    if (active && payload && payload.length) {
+                                      return (
+                                        <div className="bg-white dark:bg-slate-900 p-4 border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl text-sm min-w-[200px]">
+                                          <p className="font-bold text-slate-800 dark:text-slate-200 mb-2 border-b dark:border-slate-800 pb-2">{label}</p>
+                                          <div className="space-y-1 text-slate-600 dark:text-slate-400">
+                                            {payload.map((entry: any, index: number) => (
+                                              <p key={index} className="flex justify-between items-center whitespace-nowrap gap-4">
+                                                <span className="flex items-center">
+                                                  <span className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: entry.color }}></span>
+                                                  {entry.name}:
+                                                </span>
+                                                <span className="font-semibold dark:text-slate-200">{entry.value}</span>
+                                              </p>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  }}
+                                />
+                                {desempenhoSelectedProducts.map((prod, idx) => (
+                                  <Line 
+                                    key={prod} 
+                                    type="monotone" 
+                                    dataKey={prod} 
+                                    name={prod}
+                                    stroke={CATEGORY_COLORS[idx % CATEGORY_COLORS.length]} 
+                                    strokeWidth={2} 
+                                    dot={{ r: 3, fill: CATEGORY_COLORS[idx % CATEGORY_COLORS.length], strokeWidth: 2 }}
+                                    activeDot={{ r: 5 }} 
+                                  />
+                                ))}
+                                {desempenhoSelectedProducts.length > 0 && (
+                                  <>
+                                    <Line 
+                                      type="monotone" 
+                                      dataKey="TotalSelected" 
+                                      name="Somatório (Selecionados)"
+                                      stroke={isDarkMode ? '#ffffff' : '#000000'} 
+                                      strokeWidth={3} 
+                                      dot={false}
+                                      activeDot={{ r: 5 }}
+                                    />
+                                    <ReferenceLine 
+                                      y={(() => {
+                                        const data = dailyProductPerformances.map(day => {
+                                          let totalSelected = 0;
+                                          desempenhoSelectedProducts.forEach(p => { totalSelected += (day[p] as number) || 0; });
+                                          return totalSelected;
+                                        });
+                                        if (data.length === 0) return 0;
+                                        return data.reduce((a, b) => a + b, 0) / data.length;
+                                      })()} 
+                                      stroke={isDarkMode ? '#94a3b8' : '#64748b'} 
+                                      strokeDasharray="3 3"
+                                      label={{ position: 'top', value: 'Média do Somatório', fill: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 12 }}
+                                    />
+                                  </>
+                                )}
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+
+                          <div className="w-full xl:w-80 flex flex-col bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 transition-colors">
+                            <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-t-xl transition-colors">
+                              <h4 className="font-bold text-slate-800 dark:text-slate-200">Total do Período</h4>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Soma das vendas nos dias filtrados</p>
+                            </div>
+                            <div className="p-4 flex-1 overflow-y-auto max-h-[720px] space-y-3 custom-scrollbar">
+                              {desempenhoSelectedProducts.length === 0 ? (
+                                <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-8">Nenhum produto selecionado.</p>
+                              ) : (
+                                <>
+                                  <div className="flex justify-between items-center pb-3 mb-3 border-b border-slate-200 dark:border-slate-800">
+                                    <span className="font-bold text-slate-900 dark:text-white">SOMATÓRIO GERAL</span>
+                                    <span className="font-bold text-slate-900 dark:text-white">
+                                      {desempenhoSelectedProducts.reduce((acc, prod) => {
+                                        return acc + dailyProductPerformances.reduce((dayAcc, day) => dayAcc + (day[prod] || 0), 0);
+                                      }, 0)} unid.
+                                    </span>
+                                  </div>
+                                  {desempenhoSelectedProducts.map((prod, idx) => {
+                                    const total = dailyProductPerformances.reduce((acc, day) => acc + (day[prod] || 0), 0);
+                                    const color = CATEGORY_COLORS[idx % CATEGORY_COLORS.length];
+                                    return (
+                                      <div key={prod} className="flex justify-between items-center">
+                                        <div className="flex items-center flex-1 min-w-0 mr-3">
+                                          <div className="w-3 h-3 rounded-full mr-2 shrink-0" style={{ backgroundColor: color }}></div>
+                                          <span className="text-sm font-semibold truncate" style={{ color }} title={prod}>{prod}</span>
+                                        </div>
+                                        <span className="text-sm font-bold text-slate-600 dark:text-slate-400 shrink-0">{total} und.</span>
+                                      </div>
+                                    );
+                                  })}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-12">
+                          <Activity className="w-10 h-10 text-slate-400 mb-4" />
+                          <p className="text-slate-500 dark:text-slate-400 font-medium text-center">
+                            Selecione data e importe a planilha para ver a análise de volume.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 )}
                 
               </div>
