@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { UploadCloud, Search, FileSpreadsheet, AlertCircle, Loader2, LayoutDashboard, ShoppingCart, TrendingUp, Menu, X, ZoomIn, ZoomOut, Download, Wallet, Calendar, ChevronDown, Check, Dot, Activity, Sun, Moon, Package } from 'lucide-react';
+import { UploadCloud, Search, FileSpreadsheet, AlertCircle, Loader2, LayoutDashboard, ShoppingCart, TrendingUp, Menu, X, ZoomIn, ZoomOut, Download, Wallet, Calendar, ChevronDown, Check, Dot, Activity, Sun, Moon, Package, ShoppingBag } from 'lucide-react';
 import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, ComposedChart, Bar, LineChart, Line, Legend, ReferenceLine } from 'recharts';
 
 import { cn, parseExcelDate, formatCurrency } from './utils';
@@ -16,6 +16,7 @@ import {
 } from './components/Tooltips';
 import { ProductDropdown, UnitDropdown } from './components/Dropdowns';
 import { PosEstocagem } from './components/PosEstocagem';
+import { AnaliseCesta } from './components/AnaliseCesta';
 
 export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -50,7 +51,7 @@ export default function App() {
   const [fileName, setFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const [activeTab, setActiveTab] = useState<'vendas' | 'indicadores' | 'lucro_fluxo' | 'dispersao_mercados' | 'dispersao_produtos' | 'desempenho_tipo' | 'plano_acao' | 'pos_estocagem'>('vendas');
+  const [activeTab, setActiveTab] = useState<'vendas' | 'indicadores' | 'lucro_fluxo' | 'dispersao_mercados' | 'dispersao_produtos' | 'desempenho_tipo' | 'plano_acao' | 'pos_estocagem' | 'analise_cesta'>('vendas');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   const [rawData, setRawData] = useState<MappedRow[] | null>(null);
@@ -1031,6 +1032,19 @@ export default function App() {
             <Package className="w-5 h-5" />
             <span>Pós-Estocagem</span>
           </button>
+          
+          <button
+            onClick={() => { setActiveTab('analise_cesta'); setIsSidebarOpen(false); }}
+            className={cn(
+              "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
+              activeTab === 'analise_cesta' 
+                ? "bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" 
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
+            )}
+          >
+            <ShoppingBag className="w-5 h-5" />
+            <span>Análise de Cesta</span>
+          </button>
         </nav>
 
         <div className="p-4 border-t border-slate-100 dark:border-slate-800">
@@ -1067,7 +1081,7 @@ export default function App() {
             
             <header>
               <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-                {activeTab === 'vendas' ? 'Dashboard de Vendas' : activeTab === 'lucro_fluxo' ? 'Lucro e Fluxo Diário' : activeTab === 'dispersao_mercados' ? 'Dispersão de Mercados' : activeTab === 'dispersao_produtos' ? 'Dispersão de Produtos' : activeTab === 'desempenho_tipo' ? 'Desempenho Tipo' : activeTab === 'plano_acao' ? 'Plano de Ação' : activeTab === 'pos_estocagem' ? 'Pós-Estocagem' : 'Indicadores de Risco'}
+                {activeTab === 'vendas' ? 'Dashboard de Vendas' : activeTab === 'lucro_fluxo' ? 'Lucro e Fluxo Diário' : activeTab === 'dispersao_mercados' ? 'Dispersão de Mercados' : activeTab === 'dispersao_produtos' ? 'Dispersão de Produtos' : activeTab === 'desempenho_tipo' ? 'Desempenho Tipo' : activeTab === 'plano_acao' ? 'Plano de Ação' : activeTab === 'pos_estocagem' ? 'Pós-Estocagem' : activeTab === 'analise_cesta' ? 'Análise de Cesta' : 'Indicadores de Risco'}
               </h1>
               <p className="text-slate-500 dark:text-slate-400 mt-2">
                 {activeTab === 'vendas' 
@@ -1084,6 +1098,8 @@ export default function App() {
                   ? 'Cruze as planilhas de planogramas e vendas para encontrar os produtos faltantes e otimizar as prateleiras.'
                   : activeTab === 'plano_acao'
                   ? 'Classifique automaticamente e exporte tarefas operacionais utilizando matriz de dispersão de destino e densidade lucrocntrica.'
+                  : activeTab === 'analise_cesta'
+                  ? 'Analise o comportamento de compra conjunta (co-ocorrência) e o perfil da cesta de cada produto.'
                   : 'Veja alertas de risco para seus produtos.'}
               </p>
             </header>
@@ -1178,7 +1194,7 @@ export default function App() {
             )}
 
             {/* Results Area */}
-            {stats.length > 0 && activeTab !== 'pos_estocagem' && (
+            {stats.length > 0 && activeTab !== 'pos_estocagem' && activeTab !== 'analise_cesta' && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -1987,6 +2003,7 @@ export default function App() {
             )}
 
             {activeTab === 'pos_estocagem' && <PosEstocagem />}
+            {activeTab === 'analise_cesta' && rawData && <AnaliseCesta rawData={rawData} />}
           </div>
         </div>
       </main>
