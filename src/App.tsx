@@ -1,400 +1,21 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { UploadCloud, Search, FileSpreadsheet, AlertCircle, Loader2, LayoutDashboard, ShoppingCart, TrendingUp, Menu, X, ZoomIn, ZoomOut, Download, Wallet, Calendar, ChevronDown, Check, Dot, Activity, Sun, Moon } from 'lucide-react';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { UploadCloud, Search, FileSpreadsheet, AlertCircle, Loader2, LayoutDashboard, ShoppingCart, TrendingUp, Menu, X, ZoomIn, ZoomOut, Download, Wallet, Calendar, ChevronDown, Check, Dot, Activity, Sun, Moon, Package } from 'lucide-react';
 import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, ComposedChart, Bar, LineChart, Line, Legend, ReferenceLine } from 'recharts';
 
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+import { cn, parseExcelDate, formatCurrency } from './utils';
+import { CATEGORY_COLORS } from './constants';
+import type { 
+  ProductStats, DailyFinancialStats, MappedRow, 
+  MarketScatterStat, ProductScatterStat, ActionPlanData 
+} from './types';
 
-const CATEGORY_COLORS = ["#ec4899", "#8b5cf6", "#f59e0b", "#3b82f6", "#10b981", "#ef4444", "#6366f1", "#14b8a6", "#84cc16", "#a855f7", "#fb923c", "#0ea5e9", "#78716c", "#94a3b8", "#f43f5e"];
-
-interface ProductStats {
-  name: string;
-  salesCount: number;
-  minDate: Date;
-  maxDate: Date;
-  velocity: number | null; // vendas por dia
-  timeToSellOne: number | null; // dias
-  ruptureDays: number;
-  uniqueSalesCount: number;
-  // Novas métricas
-  grossVelocity: number | null;
-  pixPercent: number;
-  hhi: number;
-  margin: number;
-  status: string;
-  volume: number;
-}
-
-interface DailyFinancialStats {
-  date: Date;
-  dateStr: string;
-  volume: number;
-  transactions: number;
-  faturamento: number;
-  margemBruta: number;
-  margemLiquida: number;
-  deduction: number;
-}
-
-interface MappedRow {
-  date: Date;
-  dayDate: Date;
-  productName: string;
-  buyerId: string;
-  salePrice: number;
-  costPrice: number;
-  client: string;
-  category: string;
-}
-
-interface MarketScatterStat {
-  name: string;
-  volumePercent: number;
-  marginPercent: number;
-  volume: number;
-  margemLiquida: number;
-  faturamento: number;
-}
-
-interface ProductScatterStat {
-  name: string;
-  category: string;
-  volumePercent: number;
-  marginPercent: number;
-  margemUnitaria: number;
-  volume: number;
-  margemLiquida: number;
-  faturamento: number;
-  totalCost: number;
-}
-
-function parseExcelDate(val: any): Date | null {
-  if (!val) return null;
-  
-  if (typeof val === 'number') {
-    return new Date(Math.round((val - 25569) * 86400 * 1000));
-  }
-  
-  if (typeof val === 'string') {
-    const parts = val.trim().split(' ');
-    const datePart = parts[0];
-    const timePart = parts[1];
-    
-    if (!datePart) return null;
-    
-    const dateParts = datePart.includes('/') ? datePart.split('/') : datePart.split('-');
-    if (dateParts.length !== 3) return null;
-    
-    const day = parseInt(dateParts[0], 10);
-    const month = parseInt(dateParts[1], 10);
-    let year = parseInt(dateParts[2], 10);
-    
-    if (year < 100) {
-      year += 2000;
-    }
-    
-    let hours = 0, minutes = 0, seconds = 0;
-    if (timePart) {
-      const timeParts = timePart.split(':');
-      hours = parseInt(timeParts[0] || '0', 10);
-      minutes = parseInt(timeParts[1] || '0', 10);
-      seconds = parseInt(timeParts[2] || '0', 10);
-    }
-    
-    const date = new Date(year, month - 1, day, hours, minutes, seconds);
-    return isNaN(date.getTime()) ? null : date;
-  }
-  
-  if (val instanceof Date) {
-    return isNaN(val.getTime()) ? null : val;
-  }
-  
-  return null;
-}
-
-const CustomTooltip = ({ active, payload }: any) => {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload as ProductStats;
-    return (
-      <div className="bg-white dark:bg-slate-900 p-4 border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl text-sm min-w-[200px]">
-        <p className="font-bold text-slate-800 dark:text-slate-200 mb-2 border-b dark:border-slate-800 pb-2">{data.name}</p>
-        <div className="space-y-1 text-slate-600 dark:text-slate-400">
-          <p><span className="font-medium text-slate-700 dark:text-slate-300">Volume:</span> {data.volume} unid.</p>
-          <p><span className="font-medium text-slate-700 dark:text-slate-300">HHI (Concentração):</span> {data.hhi?.toFixed(0) ?? 'N/A'}</p>
-          <p><span className="font-medium text-slate-700 dark:text-slate-300">Margem:</span> {data.margin?.toFixed(2) ?? 'N/A'}%</p>
-          <p><span className="font-medium text-slate-700 dark:text-slate-300">Vendas PIX:</span> {data.pixPercent?.toFixed(2) ?? 'N/A'}%</p>
-        </div>
-        <div className="mt-3 pt-2 border-t dark:border-slate-800">
-          <span className={cn(
-            "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
-            data.status === 'Alerta de Risco' && "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-            data.status === 'Motor da Loja' && "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
-            data.status === 'Cauda Longa' && "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-400",
-            data.status === 'Venda Monopolizada Menor' && "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
-          )}>
-            {data.status}
-          </span>
-        </div>
-      </div>
-    );
-  }
-  return null;
-};
-
-const CustomFinancialTooltip = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload as DailyFinancialStats;
-    
-    const formatCurrency = (val: number) => 
-      new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
-
-    return (
-      <div className="bg-white dark:bg-slate-900 p-4 border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl text-sm min-w-[220px]">
-        <p className="font-bold text-slate-800 dark:text-slate-200 mb-2 border-b dark:border-slate-800 pb-2">{data.dateStr}</p>
-        <div className="space-y-2 text-slate-600 dark:text-slate-400">
-          <p className="flex justify-between">
-            <span className="font-medium text-slate-700 dark:text-slate-300 flex items-center"><span className="w-3 h-3 rounded-full bg-blue-300 mr-2"></span>Faturamento:</span>
-            <span className="dark:text-slate-200">{formatCurrency(data.faturamento)}</span>
-          </p>
-          <p className="flex justify-between">
-            <span className="font-medium text-slate-700 dark:text-slate-300 flex items-center"><span className="w-3 h-3 rounded-full bg-blue-500 mr-2"></span>Margem Bruta:</span>
-            <span className="dark:text-slate-200">{formatCurrency(data.margemBruta)}</span>
-          </p>
-          <p className="flex justify-between">
-            <span className="font-medium text-slate-700 dark:text-slate-300 flex items-center"><span className="w-3 h-3 rounded-full bg-blue-800 mr-2"></span>Margem Líquida:</span>
-            <span className={cn(data.margemLiquida < 0 ? "text-red-600 dark:text-red-400 font-semibold" : "dark:text-slate-200")}>
-              {formatCurrency(data.margemLiquida)}
-            </span>
-          </p>
-          <div className="border-t dark:border-slate-800 my-1"></div>
-          <p className="flex justify-between">
-            <span className="font-medium text-slate-700 dark:text-slate-300 flex items-center"><span className="w-3 h-3 rounded-full bg-orange-500 mr-2"></span>Volume Vendas:</span>
-            <span className="dark:text-slate-200">{data.volume} unid.</span>
-          </p>
-          <div className="border-t dark:border-slate-800 my-1"></div>
-          <p className="flex justify-between">
-            <span className="font-medium text-slate-700 dark:text-slate-300 flex items-center"><span className="w-3 h-3 rounded-full bg-purple-500 mr-2"></span>Ticket Médio:</span>
-            <span className="dark:text-slate-200">{data.transactions > 0 ? formatCurrency(data.faturamento / data.transactions) : formatCurrency(0)}</span>
-          </p>
-        </div>
-      </div>
-    );
-  }
-  return null;
-};
-
-const CustomMarketScatterTooltip = ({ active, payload }: any) => {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload as MarketScatterStat;
-    
-    const formatCurrency = (val: number) => 
-      new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
-
-    return (
-      <div className="bg-white p-4 border border-slate-200 shadow-xl rounded-xl text-sm min-w-[200px]">
-        <p className="font-bold text-slate-800 mb-2 border-b pb-2">{data.name}</p>
-        <div className="space-y-1 text-slate-600">
-          <p><span className="font-medium text-slate-700">Volume (% do Total):</span> {data.volumePercent?.toFixed(2)}%</p>
-          <p><span className="font-medium text-slate-700">Margem Líquida (% do Faturamento):</span> {data.marginPercent?.toFixed(2)}%</p>
-          <p><span className="font-medium text-slate-700">Volume Absoluto:</span> {data.volume} unid.</p>
-          <p><span className="font-medium text-slate-700">Faturamento:</span> {formatCurrency(data.faturamento)}</p>
-          <p><span className="font-medium text-slate-700">Margem Líquida (R$):</span> {formatCurrency(data.margemLiquida)}</p>
-        </div>
-      </div>
-    );
-  }
-  return null;
-};
-
-const CustomProductScatterTooltip = ({ active, payload }: any) => {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload as ProductScatterStat;
-    
-    // Check if it's a level curve point
-    if (!data.name) return null;
-    
-    const formatCurrency = (val: number) => 
-      new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
-
-    return (
-      <div className="bg-white p-4 border border-slate-200 shadow-xl rounded-xl text-sm min-w-[200px]">
-        <p className="font-bold text-slate-800 mb-1 border-b pb-1">{data.name}</p>
-        <p className="text-xs text-slate-500 mb-2 uppercase font-semibold">{data.category}</p>
-        <div className="space-y-1 text-slate-600">
-          <p><span className="font-medium text-slate-700">Volume Relativo:</span> {data.volumePercent?.toFixed(2)}%</p>
-          <p><span className="font-medium text-slate-700">Margem Unitária:</span> {formatCurrency(data.margemUnitaria || 0)}</p>
-          <p><span className="font-medium text-slate-700">Margem %:</span> {data.marginPercent?.toFixed(2)}%</p>
-          <p><span className="font-medium text-slate-700">Volume Absoluto:</span> {data.volume} unid.</p>
-          <p><span className="font-medium text-slate-700">Faturamento:</span> {formatCurrency(data.faturamento)}</p>
-          <p><span className="font-medium text-slate-700">Margem Líquida Total:</span> {formatCurrency(data.margemLiquida)}</p>
-        </div>
-      </div>
-    );
-  }
-  return null;
-};
-
-const ProductDropdown = ({ availableProducts, selectedProducts, onChange }: { availableProducts: string[], selectedProducts: string[], onChange: (s: string[]) => void }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const toggleProduct = (p: string) => {
-    if (selectedProducts.includes(p)) onChange(selectedProducts.filter(x => x !== p));
-    else onChange([...selectedProducts, p]);
-  };
-
-  const toggleAll = () => {
-    if (selectedProducts.length === availableProducts.length) onChange([]);
-    else onChange([...availableProducts]);
-  };
-
-  const filteredProducts = searchTerm.trim() ? availableProducts.filter(p => p.toLowerCase().includes(searchTerm.toLowerCase())) : availableProducts;
-
-  return (
-    <div className="relative" ref={dropdownRef}>
-      <button 
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center space-x-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition"
-      >
-        <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
-          Produtos ({selectedProducts.length})
-        </span>
-        <ChevronDown className="w-4 h-4 text-slate-400" />
-      </button>
-
-      {isOpen && (
-        <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl z-50 p-2 max-h-[400px] flex flex-col">
-          <input 
-            type="text" 
-            placeholder="Buscar produto..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full text-sm border-b border-slate-200 dark:border-slate-800 p-2 outline-none mb-2 bg-transparent text-slate-900 dark:text-slate-100"
-          />
-          <div 
-            className="flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg cursor-pointer border-b border-slate-100 dark:border-slate-800 mb-1 shrink-0"
-            onClick={toggleAll}
-          >
-            <div className={cn("w-4 h-4 rounded flex items-center justify-center mr-3 border shrink-0", 
-              selectedProducts.length === availableProducts.length ? "bg-blue-600 border-blue-600" : "border-slate-300 dark:border-slate-700"
-            )}>
-              {selectedProducts.length === availableProducts.length && <Check className="w-3 h-3 text-white" />}
-            </div>
-            <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">Selecionar Todos</span>
-          </div>
-          
-          <div className="overflow-y-auto flex-1 min-h-[50px] max-h-[250px]">
-          {filteredProducts.map(prod => {
-            const isSelected = selectedProducts.includes(prod);
-            return (
-              <div 
-                key={prod} 
-                className="flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
-                onClick={() => toggleProduct(prod)}
-              >
-                <div className={cn("w-4 h-4 rounded flex items-center justify-center mr-3 border shrink-0", 
-                  isSelected ? "bg-blue-600 border-blue-600" : "border-slate-300 dark:border-slate-700"
-                )}>
-                  {isSelected && <Check className="w-3 h-3 text-white" />}
-                </div>
-                <span className="text-sm text-slate-700 dark:text-slate-300 truncate" title={prod}>{prod}</span>
-              </div>
-            );
-          })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const UnitDropdown = ({ availableUnits, selectedUnits, onChange }: { availableUnits: string[], selectedUnits: string[], onChange: (s: string[]) => void }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const toggleUnit = (u: string) => {
-    if (selectedUnits.includes(u)) onChange(selectedUnits.filter(x => x !== u));
-    else onChange([...selectedUnits, u]);
-  };
-
-  const toggleAll = () => {
-    if (selectedUnits.length === availableUnits.length) onChange([]);
-    else onChange([...availableUnits]);
-  };
-
-  return (
-    <div className="relative" ref={dropdownRef}>
-      <button 
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center space-x-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition"
-      >
-        <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
-          Unidades ({selectedUnits.length})
-        </span>
-        <ChevronDown className="w-4 h-4 text-slate-400" />
-      </button>
-
-      {isOpen && (
-        <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl z-50 p-2 max-h-64 overflow-y-auto">
-          <div 
-            className="flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg cursor-pointer border-b border-slate-100 dark:border-slate-800 mb-1"
-            onClick={toggleAll}
-          >
-            <div className={cn("w-4 h-4 rounded flex items-center justify-center mr-3 border", 
-              selectedUnits.length === availableUnits.length ? "bg-blue-600 border-blue-600" : "border-slate-300 dark:border-slate-700"
-            )}>
-              {selectedUnits.length === availableUnits.length && <Check className="w-3 h-3 text-white" />}
-            </div>
-            <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">Selecionar Todas</span>
-          </div>
-          
-          {availableUnits.map(unit => {
-            const isSelected = selectedUnits.includes(unit);
-            return (
-              <div 
-                key={unit} 
-                className="flex items-center p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
-                onClick={() => toggleUnit(unit)}
-              >
-                <div className={cn("w-4 h-4 rounded flex items-center justify-center mr-3 border", 
-                  isSelected ? "bg-blue-600 border-blue-600" : "border-slate-300 dark:border-slate-700"
-                )}>
-                  {isSelected && <Check className="w-3 h-3 text-white" />}
-                </div>
-                <span className="text-sm text-slate-700 dark:text-slate-300 truncate">{unit}</span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-};
+import { 
+  CustomTooltip, CustomFinancialTooltip, 
+  CustomMarketScatterTooltip, CustomProductScatterTooltip 
+} from './components/Tooltips';
+import { ProductDropdown, UnitDropdown } from './components/Dropdowns';
+import { PosEstocagem } from './components/PosEstocagem';
 
 export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -429,7 +50,7 @@ export default function App() {
   const [fileName, setFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const [activeTab, setActiveTab] = useState<'vendas' | 'indicadores' | 'lucro_fluxo' | 'dispersao_mercados' | 'dispersao_produtos' | 'desempenho_tipo'>('vendas');
+  const [activeTab, setActiveTab] = useState<'vendas' | 'indicadores' | 'lucro_fluxo' | 'dispersao_mercados' | 'dispersao_produtos' | 'desempenho_tipo' | 'plano_acao' | 'pos_estocagem'>('vendas');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   const [rawData, setRawData] = useState<MappedRow[] | null>(null);
@@ -441,12 +62,134 @@ export default function App() {
   const [filterEndDate, setFilterEndDate] = useState<string>('');
   const [scatterCategoryFilter, setScatterCategoryFilter] = useState<string>('Todas');
 
+  // Clustering Variables / Settings
+  const [frentesParam, setFrentesParam] = useState<Record<string, number>>({});
+  const [thresholdDestino, setThresholdDestino] = useState<number>(0.30);
+  const [internalThresholds, setInternalThresholds] = useState<{giro: number, densidade: number}>({giro: 0, densidade: 0});
+  const [actionPlanData, setActionPlanData] = useState<ActionPlanData[]>([]);
+
   const [xDomain, setXDomain] = useState<[number, number]>([0, 10000]);
   const [yDomain, setYDomain] = useState<[number, number]>([0, 100]);
   const [isZoomed, setIsZoomed] = useState(false);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const [maxVol, setMaxVol] = useState(100);
   
+  const calculateActionPlan = useCallback(() => {
+    if (!rawData) return;
+    
+    const filterStartMs = filterStartDate ? new Date(filterStartDate + 'T00:00:00').getTime() : null;
+    const filterEndMs = filterEndDate ? new Date(filterEndDate + 'T23:59:59').getTime() : null;
+
+    const filteredRows = rawData.filter(row => {
+      if (filterStartMs && row.dayDate.getTime() < filterStartMs) return false;
+      if (filterEndMs && row.dayDate.getTime() > filterEndMs) return false;
+      if (selectedUnits.length > 0 && row.client && !selectedUnits.includes(row.client)) return false;
+      return true;
+    });
+
+    // 1. Group tickets by idCupom to count distinct SKUs
+    const ticketMap = new Map<string, Set<string>>(); // idCupom -> set of product names
+    for (const row of filteredRows) {
+      if (!ticketMap.has(row.idCupom)) {
+        ticketMap.set(row.idCupom, new Set());
+      }
+      ticketMap.get(row.idCupom)!.add(row.productName);
+    }
+
+    // 2. Aggregate per product
+    const prodMap = new Map<string, {
+      volume: number;
+      margemLiquidaTotal: number;
+      ticketsTotais: Set<string>;
+      ticketsExclusivos: Set<string>;
+    }>();
+
+    for (const row of filteredRows) {
+      const pName = row.productName;
+      if (!prodMap.has(pName)) {
+         prodMap.set(pName, { volume: 0, margemLiquidaTotal: 0, ticketsTotais: new Set(), ticketsExclusivos: new Set() });
+      }
+      const pData = prodMap.get(pName)!;
+      
+      // Volume
+      pData.volume += 1;
+      
+      // Margem Líquida Unitária Real (dedução flat de 25%)
+      const itemMargem = row.salePrice - row.costPrice - (row.salePrice * 0.25);
+      pData.margemLiquidaTotal += itemMargem;
+      
+      // Taxa destino tracking
+      pData.ticketsTotais.add(row.idCupom);
+      if (ticketMap.get(row.idCupom)!.size === 1) {
+        pData.ticketsExclusivos.add(row.idCupom);
+      }
+    }
+
+    const interimData = Array.from(prodMap.entries()).map(([produto, data]) => {
+      const frentes = frentesParam[produto] || 1;
+      const densidadeLucro = data.margemLiquidaTotal / frentes;
+      const taxaDestino = data.ticketsTotais.size > 0 ? (data.ticketsExclusivos.size / data.ticketsTotais.size) : 0;
+      
+      return {
+        produto,
+        frentes,
+        volumeTotal: data.volume,
+        densidadeLucro,
+        taxaDestino
+      };
+    });
+
+    // Calc medians if auto
+    const vols = interimData.map(d => d.volumeTotal).sort((a,b)=>a-b);
+    const dens = interimData.map(d => d.densidadeLucro).sort((a,b)=>a-b);
+    
+    const medGiro = vols.length > 0 ? vols[Math.floor(vols.length/2)] : 0;
+    const medDens = dens.length > 0 ? dens[Math.floor(dens.length/2)] : 0;
+    
+    setInternalThresholds({ giro: medGiro, densidade: medDens });
+    
+    // We will use medians directly as default. Let's just use it as threshold if state is 0/null.
+    // However, since we might want to manually adjust it, we use the thresholds provided by state if they exist.
+    // If the state is 0, we can use medians.
+    const finalThresholdGiro = medGiro; // Just hardcode to median or we could introduce more inputs
+    const finalThresholdDensidade = medDens;
+
+    const finalPlan: ActionPlanData[] = interimData.map(d => {
+      let cluster = '3 - Análise Manual (Baixa Intenção, Baixo Giro, Alta Densidade)'; // Fallback based on logical combinations
+      let acaoRecomendada = '-';
+
+      // Rules explicitly from prompt
+      if (d.taxaDestino >= thresholdDestino && d.volumeTotal >= finalThresholdGiro) {
+        cluster = '1 - Tratores';
+        acaoRecomendada = 'Mover para o Fundo';
+      } else if (d.taxaDestino >= thresholdDestino && d.volumeTotal < finalThresholdGiro) {
+        cluster = '4 - Urgência Estratégica';
+        acaoRecomendada = 'Posição Fria / Reduzir Frente / Aumentar Markup';
+      } else if (d.taxaDestino < thresholdDestino && d.densidadeLucro >= finalThresholdDensidade) {
+        cluster = '2 - Ouro de Impulso';
+        acaoRecomendada = 'Checkout / Pontos Quentes';
+      } else if (d.taxaDestino < thresholdDestino && d.densidadeLucro < finalThresholdDensidade && d.volumeTotal < finalThresholdGiro) {
+        cluster = '5 - Inadimplentes';
+        acaoRecomendada = 'Alerta de Guilhotina';
+      } else {
+        cluster = '3 - Análise Manual';
+        acaoRecomendada = 'Avaliar individualmente';
+      }
+
+      return {
+        ...d,
+        cluster,
+        acaoRecomendada
+      };
+    });
+
+    setActionPlanData(finalPlan);
+  }, [rawData, filterStartDate, filterEndDate, selectedUnits, frentesParam, thresholdDestino]);
+
+  useEffect(() => {
+    calculateActionPlan();
+  }, [calculateActionPlan]);
+
   const [isPanning, setIsPanning] = useState(false);
   const [lastPanPos, setLastPanPos] = useState<{x: number, y: number} | null>(null);
 
@@ -502,7 +245,7 @@ export default function App() {
       }
       
       let headerRowIndex = -1;
-      let colMap = { date: -1, product: -1, buyer: -1, sale: -1, cost: -1, client: -1, category: -1 };
+      let colMap = { date: -1, product: -1, buyer: -1, sale: -1, cost: -1, client: -1, category: -1, req: -1, pedido: -1 };
 
       for (let i = 0; i < Math.min(rows.length, 50); i++) {
         const row = rows[i];
@@ -520,6 +263,8 @@ export default function App() {
             else if (val === "Preço de Custo (R$)" || lower.includes("custo")) colMap.cost = idx;
             else if (lower.includes('cliente') || lower.includes('unidade') || lower.includes('mercado') || lower.includes('condomínio') || lower.includes('condominio')) colMap.client = idx;
             else if (lower === 'categoria' || lower.includes('categoria')) colMap.category = idx;
+            else if (val === "Requisição" || lower === "requisição" || lower === "requisicao") colMap.req = idx;
+            else if (val === "Pedido" || lower === "pedido") colMap.pedido = idx;
           });
           break;
         }
@@ -569,6 +314,10 @@ export default function App() {
         const client = colMap.client !== -1 && row[colMap.client] != null ? String(row[colMap.client]).trim() : '';
         const category = colMap.category !== -1 && row[colMap.category] != null ? String(row[colMap.category]).trim() : 'Sem Categoria';
 
+        const reqStr = colMap.req !== -1 && row[colMap.req] != null ? String(row[colMap.req]).trim() : '';
+        const pedStr = colMap.pedido !== -1 && row[colMap.pedido] != null ? String(row[colMap.pedido]).trim() : '';
+        const idCupom = reqStr || pedStr || `cupom_fantasma_${i}`; // fallback for empty rows if needed, but we keep it tracking
+
         if (client) uniqueClients.add(client);
 
         mappedRows.push({
@@ -579,7 +328,8 @@ export default function App() {
             salePrice,
             costPrice,
             client,
-            category
+            category,
+            idCupom
         });
       }
       
@@ -1169,9 +919,8 @@ export default function App() {
         isSidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-          <div className="flex items-center space-x-2 text-blue-600 dark:text-blue-400">
-            <LayoutDashboard className="w-6 h-6" />
-            <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">Help4U</span>
+          <div className="flex items-center space-x-2">
+            <img src="https://help4u.com.br/wp-content/uploads/2025/07/Help4u-v2-1-scaled.png" alt="Help4U" className="h-8 w-auto object-contain" />
           </div>
           <button className="md:hidden text-slate-500" onClick={() => setIsSidebarOpen(false)}>
             <X className="w-5 h-5" />
@@ -1184,7 +933,7 @@ export default function App() {
             className={cn(
               "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
               activeTab === 'vendas' 
-                ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" 
+                ? "bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" 
                 : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
             )}
           >
@@ -1197,7 +946,7 @@ export default function App() {
             className={cn(
               "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
               activeTab === 'indicadores' 
-                ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" 
+                ? "bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" 
                 : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
             )}
           >
@@ -1210,7 +959,7 @@ export default function App() {
             className={cn(
               "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
               activeTab === 'lucro_fluxo' 
-                ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" 
+                ? "bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" 
                 : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
             )}
           >
@@ -1223,7 +972,7 @@ export default function App() {
             className={cn(
               "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
               activeTab === 'dispersao_mercados' 
-                ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" 
+                ? "bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" 
                 : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
             )}
           >
@@ -1236,7 +985,7 @@ export default function App() {
             className={cn(
               "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
               activeTab === 'dispersao_produtos' 
-                ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" 
+                ? "bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" 
                 : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
             )}
           >
@@ -1249,12 +998,38 @@ export default function App() {
             className={cn(
               "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
               activeTab === 'desempenho_tipo' 
-                ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400" 
+                ? "bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" 
                 : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
             )}
           >
             <Activity className="w-5 h-5" />
             <span>Desempenho Tipo</span>
+          </button>
+          
+          <button
+            onClick={() => { setActiveTab('plano_acao'); setIsSidebarOpen(false); }}
+            className={cn(
+              "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
+              activeTab === 'plano_acao' 
+                ? "bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" 
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
+            )}
+          >
+            <LayoutDashboard className="w-5 h-5" />
+            <span>Plano de Ação</span>
+          </button>
+          
+          <button
+            onClick={() => { setActiveTab('pos_estocagem'); setIsSidebarOpen(false); }}
+            className={cn(
+              "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
+              activeTab === 'pos_estocagem' 
+                ? "bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" 
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
+            )}
+          >
+            <Package className="w-5 h-5" />
+            <span>Pós-Estocagem</span>
           </button>
         </nav>
 
@@ -1263,7 +1038,7 @@ export default function App() {
             onClick={() => setIsDarkMode(!isDarkMode)}
             className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
           >
-            {isDarkMode ? <Sun className="w-5 h-5 text-amber-500" /> : <Moon className="w-5 h-5 text-blue-600" />}
+            {isDarkMode ? <Sun className="w-5 h-5 text-amber-500" /> : <Moon className="w-5 h-5 text-orange-600" />}
             <span>{isDarkMode ? 'Modo Claro' : 'Modo Escuro'}</span>
           </button>
         </div>
@@ -1276,9 +1051,8 @@ export default function App() {
           <button onClick={() => setIsSidebarOpen(true)} className="text-slate-500 dark:text-slate-400 p-1">
             <Menu className="w-6 h-6" />
           </button>
-          <div className="flex items-center space-x-2 text-blue-600 dark:text-blue-400">
-            <LayoutDashboard className="w-5 h-5" />
-            <span className="font-bold">Help4U</span>
+          <div className="flex items-center space-x-2">
+            <img src="https://help4u.com.br/wp-content/uploads/2025/07/Help4u-v2-1-scaled.png" alt="Help4U" className="h-6 w-auto object-contain" />
           </div>
           <button 
             onClick={() => setIsDarkMode(!isDarkMode)}
@@ -1293,7 +1067,7 @@ export default function App() {
             
             <header>
               <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-                {activeTab === 'vendas' ? 'Dashboard de Vendas' : activeTab === 'lucro_fluxo' ? 'Lucro e Fluxo Diário' : activeTab === 'dispersao_mercados' ? 'Dispersão de Mercados' : activeTab === 'dispersao_produtos' ? 'Dispersão de Produtos' : activeTab === 'desempenho_tipo' ? 'Desempenho Tipo' : 'Indicadores de Risco'}
+                {activeTab === 'vendas' ? 'Dashboard de Vendas' : activeTab === 'lucro_fluxo' ? 'Lucro e Fluxo Diário' : activeTab === 'dispersao_mercados' ? 'Dispersão de Mercados' : activeTab === 'dispersao_produtos' ? 'Dispersão de Produtos' : activeTab === 'desempenho_tipo' ? 'Desempenho Tipo' : activeTab === 'plano_acao' ? 'Plano de Ação' : activeTab === 'pos_estocagem' ? 'Pós-Estocagem' : 'Indicadores de Risco'}
               </h1>
               <p className="text-slate-500 dark:text-slate-400 mt-2">
                 {activeTab === 'vendas' 
@@ -1306,12 +1080,16 @@ export default function App() {
                   ? 'Visualize a alta performance vs. rentabilidade de cada produto considerando o ticket isolado por categoria.'
                   : activeTab === 'desempenho_tipo'
                   ? 'Acompanhe a linha do tempo e o desempenho de volume diário dos produtos selecionados.'
-                  : 'Matriz de Risco de Demanda e Estoque baseada em Volume, Penetração e Venda Cega.'}
+                  : activeTab === 'pos_estocagem'
+                  ? 'Cruze as planilhas de planogramas e vendas para encontrar os produtos faltantes e otimizar as prateleiras.'
+                  : activeTab === 'plano_acao'
+                  ? 'Classifique automaticamente e exporte tarefas operacionais utilizando matriz de dispersão de destino e densidade lucrocntrica.'
+                  : 'Veja alertas de risco para seus produtos.'}
               </p>
             </header>
 
-            {/* Upload Area (Only show if no stats) */}
-            {stats.length === 0 && !rawData && (
+            {/* Upload Area (Only show if no stats and not in pos_estocagem) */}
+            {stats.length === 0 && !rawData && activeTab !== 'pos_estocagem' && (
               <div className="space-y-6">
                 <div
                   onDrop={handleDrop}
@@ -1321,7 +1099,7 @@ export default function App() {
                   className={cn(
                     "relative flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-2xl transition-all cursor-pointer overflow-hidden",
                     isDragging 
-                      ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" 
+                      ? "border-orange-500 bg-orange-50 dark:bg-orange-900/20" 
                       : "border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-600",
                     isLoading && "pointer-events-none opacity-70"
                   )}
@@ -1336,12 +1114,12 @@ export default function App() {
                   
                   {isLoading ? (
                     <div className="flex flex-col items-center space-y-4">
-                      <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
+                      <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
                       <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Processando planilha...</p>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center space-y-4 text-center p-6">
-                      <div className="p-4 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full">
+                      <div className="p-4 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 rounded-full">
                         <UploadCloud className="w-8 h-8" />
                       </div>
                       <div>
@@ -1400,7 +1178,7 @@ export default function App() {
             )}
 
             {/* Results Area */}
-            {stats.length > 0 && (
+            {stats.length > 0 && activeTab !== 'pos_estocagem' && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -1424,7 +1202,7 @@ export default function App() {
                         placeholder="Buscar produto..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="block w-full pl-10 pr-3 py-2 border border-slate-200 rounded-xl leading-5 bg-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-all shadow-sm"
+                        className="block w-full pl-10 pr-3 py-2 border border-slate-200 rounded-xl leading-5 bg-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 sm:text-sm transition-all shadow-sm"
                       />
                     </div>
                   </div>
@@ -1434,7 +1212,7 @@ export default function App() {
                   <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
                     <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
                        <h3 className="text-base font-semibold text-slate-800">Tabela de Vendas</h3>
-                       <button onClick={exportToExcel} className="flex items-center space-x-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                       <button onClick={exportToExcel} className="flex items-center space-x-2 px-3 py-1.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition">
                           <Download className="w-4 h-4" />
                           <span className="text-sm font-medium">Exportar XLSX</span>
                        </button>
@@ -1473,7 +1251,7 @@ export default function App() {
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-slate-600">
                                   {stat.velocity !== null ? (
                                     <div className="flex flex-col items-end">
-                                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-700">
                                         {stat.velocity.toFixed(2)}
                                       </span>
                                       {stat.ruptureDays > 0 && (
@@ -1667,9 +1445,9 @@ export default function App() {
                     {financialStats.length > 0 && (
                       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                         {[
-                          { title: 'Faturamento Total', value: financialStats.reduce((acc, curr) => acc + curr.faturamento, 0), type: 'currency', color: 'text-blue-400 dark:text-blue-300' },
-                          { title: 'Margem Bruta Total', value: financialStats.reduce((acc, curr) => acc + curr.margemBruta, 0), type: 'currency', color: 'text-blue-500 dark:text-blue-400' },
-                          { title: 'Margem Líquida Total', value: financialStats.reduce((acc, curr) => acc + curr.margemLiquida, 0), type: 'currency', color: 'text-blue-800 dark:text-blue-500' },
+                          { title: 'Faturamento Total', value: financialStats.reduce((acc, curr) => acc + curr.faturamento, 0), type: 'currency', color: 'text-orange-400 dark:text-orange-300' },
+                          { title: 'Margem Bruta Total', value: financialStats.reduce((acc, curr) => acc + curr.margemBruta, 0), type: 'currency', color: 'text-orange-500 dark:text-orange-400' },
+                          { title: 'Margem Líquida Total', value: financialStats.reduce((acc, curr) => acc + curr.margemLiquida, 0), type: 'currency', color: 'text-orange-800 dark:text-orange-500' },
                           { title: 'Volume Total', value: financialStats.reduce((acc, curr) => acc + curr.volume, 0), type: 'number', color: 'text-orange-500 dark:text-orange-400' },
                           { title: 'Ticket Médio', value: financialStats.reduce((acc, curr) => acc + curr.transactions, 0) > 0 ? financialStats.reduce((acc, curr) => acc + curr.faturamento, 0) / financialStats.reduce((acc, curr) => acc + curr.transactions, 0) : 0, type: 'currency', color: 'text-purple-600 dark:text-purple-400' }
                         ].map((item, idx) => (
@@ -1811,7 +1589,7 @@ export default function App() {
                           Isso ajuda a identificar rapidamente os "campeões de venda" (bolas grandes) e analisar se a margem deles está saudável (posição no eixo vertical).
                         </p>
                         
-                        <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl text-sm text-blue-800 dark:text-blue-300">
+                        <div className="mt-4 p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-100 dark:border-orange-800 rounded-xl text-sm text-orange-800 dark:text-orange-300">
                           <h4 className="font-bold flex items-center mb-2">
                             <Activity className="w-4 h-4 mr-2" />
                             Matemática das Faixas de Margem (Curvas de Nível)
@@ -1838,7 +1616,7 @@ export default function App() {
                           id="category-filter"
                           value={scatterCategoryFilter}
                           onChange={(e) => setScatterCategoryFilter(e.target.value)}
-                          className="border border-slate-200 dark:border-slate-800 rounded-lg text-sm px-3 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-w-[200px]"
+                          className="border border-slate-200 dark:border-slate-800 rounded-lg text-sm px-3 py-2 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-w-[200px]"
                         >
                           {availableCategories.map(cat => (
                             <option key={cat} value={cat}>{cat}</option>
@@ -2109,8 +1887,106 @@ export default function App() {
                   </div>
                 )}
                 
+                {activeTab === 'plano_acao' && (
+                  <div className="space-y-6">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-6 overflow-hidden transition-colors">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 space-y-4 md:space-y-0">
+                        <div>
+                           <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Motor de Clusterização de Sortimento</h3>
+                           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Configure o espaço da gôndola e o algoritmo de clusterização classificará os produtos em ações estratégicas.</p>
+                           <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">
+                             Medianas (Auto): Volume = <strong>{internalThresholds.giro} unid.</strong> | Densidade = <strong>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(internalThresholds.densidade)}</strong>
+                           </p>
+                        </div>
+                        <div className="flex items-center space-x-3 bg-slate-50 dark:bg-slate-950 p-2 rounded-xl border border-slate-200 dark:border-slate-800">
+                          <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Corte Intenção (Destino):</label>
+                          <input 
+                            type="number" 
+                            step="0.05"
+                            min="0"
+                            max="1"
+                            value={thresholdDestino}
+                            onChange={(e) => setThresholdDestino(Number(e.target.value))}
+                            className="w-20 text-sm border border-slate-300 dark:border-slate-700 rounded-lg p-1 text-slate-900 dark:text-white bg-white dark:bg-slate-900"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
+                          <thead className="bg-slate-50 dark:bg-slate-950">
+                            <tr>
+                              <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Produto</th>
+                              <th className="px-6 py-4 text-center text-xs font-semibold text-orange-600 dark:text-orange-400 uppercase tracking-wider bg-orange-50/50 dark:bg-orange-900/10">Frentes Ocupadas</th>
+                              <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Volume Total</th>
+                              <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Densidade (R$)</th>
+                              <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Tx. Destino</th>
+                              <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Cluster Atribuído</th>
+                              <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Ação Recomendada</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white dark:bg-slate-900 divide-y divide-slate-200 dark:divide-slate-800">
+                            {[...actionPlanData].sort((a,b) => b.volumeTotal - a.volumeTotal).map((row, idx) => {
+                              return (
+                                <tr key={row.produto} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                                  <td className="px-6 py-4 text-sm font-medium text-slate-900 dark:text-slate-100">{row.produto}</td>
+                                  <td className="px-6 py-4 text-center bg-orange-50/20 dark:bg-orange-900/5">
+                                    <input 
+                                      type="number"
+                                      min="1"
+                                      value={row.frentes}
+                                      onChange={(e) => {
+                                        setFrentesParam(prev => ({
+                                          ...prev,
+                                          [row.produto]: Math.max(1, Number(e.target.value))
+                                        }));
+                                      }}
+                                      className="w-16 text-center text-sm border border-slate-300 dark:border-slate-700 rounded-md p-1 font-semibold text-orange-700 dark:text-orange-400 bg-white dark:bg-slate-950 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                                    />
+                                  </td>
+                                  <td className="px-6 py-4 text-sm text-right text-slate-600 dark:text-slate-400 font-medium">{row.volumeTotal}</td>
+                                  <td className="px-6 py-4 text-sm text-right text-slate-600 dark:text-slate-400">
+                                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(row.densidadeLucro)}
+                                  </td>
+                                  <td className="px-6 py-4 text-sm text-right text-slate-600 dark:text-slate-400">
+                                    {(row.taxaDestino * 100).toFixed(1)}%
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <span className={cn(
+                                      "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap",
+                                      row.cluster.includes('Tratores') && "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
+                                      row.cluster.includes('Impulso') && "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+                                      row.cluster.includes('Urgência') && "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
+                                      row.cluster.includes('Inadimplentes') && "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+                                      row.cluster.includes('Análise Manual') && "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-400"
+                                    )}>
+                                      {row.cluster}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{row.acaoRecomendada}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                        
+                        {actionPlanData.length === 0 && (
+                          <div className="flex flex-col items-center justify-center py-12">
+                            <Activity className="w-10 h-10 text-slate-400 mb-4" />
+                            <p className="text-slate-500 dark:text-slate-400 font-medium text-center">
+                              Importe os dados para gerar o plano de ação.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
               </div>
             )}
+
+            {activeTab === 'pos_estocagem' && <PosEstocagem />}
           </div>
         </div>
       </main>
