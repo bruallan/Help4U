@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { UploadCloud, Search, FileSpreadsheet, AlertCircle, Loader2, LayoutDashboard, ShoppingCart, TrendingUp, Menu, X, ZoomIn, ZoomOut, Download, Wallet, Calendar, ChevronDown, Check, Dot, Activity, Sun, Moon, Package, ShoppingBag } from 'lucide-react';
+import { UploadCloud, Search, FileSpreadsheet, AlertCircle, Loader2, LayoutDashboard, ShoppingCart, TrendingUp, Menu, X, ZoomIn, ZoomOut, Download, Wallet, Calendar, ChevronDown, Check, Dot, Activity, Sun, Moon, Package, ShoppingBag, Map as MapIcon } from 'lucide-react';
 import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, ComposedChart, Bar, LineChart, Line, Legend, ReferenceLine } from 'recharts';
 
 import { cn, parseExcelDate, formatCurrency } from './utils';
@@ -17,6 +17,10 @@ import {
 import { ProductDropdown, UnitDropdown } from './components/Dropdowns';
 import { PosEstocagem } from './components/PosEstocagem';
 import { AnaliseCesta } from './components/AnaliseCesta';
+import { MapaCalor } from './components/MapaCalor';
+import { GestaoValidade } from './components/GestaoValidade';
+import { auth, db } from './lib/firebase';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -44,6 +48,12 @@ export default function App() {
   const [dailyProductPerformances, setDailyProductPerformances] = useState<any[]>([]);
   const [desempenhoSelectedProducts, setDesempenhoSelectedProducts] = useState<string[]>([]);
   
+  const [mensalSelectedMarkets, setMensalSelectedMarkets] = useState<string[]>([]);
+  const [mensalSelectedYear, setMensalSelectedYear] = useState<string>(new Date().getFullYear().toString());
+  const [mensalAvailableYears, setMensalAvailableYears] = useState<string[]>([]);
+  const [mensalMetric, setMensalMetric] = useState<'volume' | 'faturamento' | 'margem_bruta' | 'margem_liquida'>('faturamento');
+  const [monthlyPerformanceData, setMonthlyPerformanceData] = useState<any[]>([]);
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -51,7 +61,72 @@ export default function App() {
   const [fileName, setFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const [activeTab, setActiveTab] = useState<'vendas' | 'indicadores' | 'lucro_fluxo' | 'dispersao_mercados' | 'dispersao_produtos' | 'desempenho_tipo' | 'plano_acao' | 'pos_estocagem' | 'analise_cesta'>('vendas');
+  const [monthlyData, setMonthlyData] = useState<Record<string, MappedRow[]>>({});
+  const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+  useEffect(() => {
+    const loadGlobalData = async () => {
+      setIsLoading(true);
+      try {
+        const newMonthlyData: Record<string, MappedRow[]> = {};
+        let combinedRows: MappedRow[] = [];
+        const uniqueClients = new Set<string>();
+
+        // Fetch concurrently
+        await Promise.all(MONTHS.map(async (month) => {
+          try {
+            const docSnap = await getDoc(doc(db, 'spreadsheets', `global_${month}`));
+            if (docSnap.exists()) {
+              const data = docSnap.data();
+              let rawDataStr = data.rawData;
+              
+              if (!rawDataStr && data.chunksCount) {
+                let fullStr = '';
+                for (let i = 0; i < data.chunksCount; i++) {
+                  const chunkSnap = await getDoc(doc(db, 'spreadsheets', `global_${month}_chunk_${i}`));
+                  if (chunkSnap.exists()) {
+                    fullStr += chunkSnap.data().data;
+                  }
+                }
+                rawDataStr = fullStr;
+              }
+
+              if (rawDataStr) {
+                const mappedRows = JSON.parse(rawDataStr).map((row: any) => ({
+                  ...row,
+                  date: new Date(row.date),
+                  dayDate: new Date(row.dayDate)
+                }));
+                newMonthlyData[month] = mappedRows;
+                combinedRows = combinedRows.concat(mappedRows);
+              }
+            }
+          } catch (err) {
+            console.error(`Error loading ${month} cloud data`, err);
+          }
+        }));
+
+        setMonthlyData(newMonthlyData);
+
+        if (combinedRows.length > 0) {
+          combinedRows.forEach((r: any) => uniqueClients.add(r.client || r.unidade));
+          const available = Array.from(uniqueClients).sort() as string[];
+          
+          setAvailableUnits(available);
+          setSelectedUnits(available);
+          setRawData(combinedRows);
+        }
+      } catch (err: any) {
+        console.error('Error loading cloud data', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadGlobalData();
+  }, []);
+  
+  const [activeTab, setActiveTab] = useState<'vendas' | 'indicadores' | 'lucro_fluxo' | 'dispersao_mercados' | 'dispersao_produtos' | 'desempenho_tipo' | 'plano_acao' | 'pos_estocagem' | 'analise_cesta' | 'mapa_calor' | 'imports' | 'desempenho_mensal' | 'gestao_validade'>('imports');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   const [rawData, setRawData] = useState<MappedRow[] | null>(null);
@@ -223,7 +298,7 @@ export default function App() {
     XLSX.writeFile(wb, "exportacao_vendas.xlsx");
   };
 
-  const processFile = async (file: File) => {
+  const processFile = async (file: File, month: string) => {
     setIsLoading(true);
     setError(null);
     setFileName(file.name);
@@ -343,10 +418,43 @@ export default function App() {
         setFilterEndDate(maxStr);
       }
 
-      const available = Array.from(uniqueClients).sort();
+      const available = Array.from(uniqueClients).sort() as string[];
       setAvailableUnits(available);
       setSelectedUnits(available);
-      setRawData(mappedRows);
+      
+      const updatedMonthlyData = { ...monthlyData, [month]: mappedRows };
+      setMonthlyData(updatedMonthlyData);
+      
+      let combinedRows: MappedRow[] = [];
+      Object.values(updatedMonthlyData).forEach(rows => {
+         combinedRows = combinedRows.concat(rows);
+      });
+      
+      setRawData(combinedRows);
+      
+      try {
+        const jsonString = JSON.stringify(mappedRows);
+        const CHUNK_SIZE = 800000;
+        const chunks = [];
+        for (let i = 0; i < jsonString.length; i += CHUNK_SIZE) {
+          chunks.push(jsonString.slice(i, i + CHUNK_SIZE));
+        }
+
+        await setDoc(doc(db, 'spreadsheets', `global_${month}`), {
+          uid: 'global',
+          chunksCount: chunks.length,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        for (let i = 0; i < chunks.length; i++) {
+          await setDoc(doc(db, 'spreadsheets', `global_${month}_chunk_${i}`), {
+            data: chunks[i]
+          });
+        }
+      } catch (err) {
+        console.error("Failed to save to cloud", err);
+      }
     } catch (err: any) {
       console.error(err);
       setError(err.message || 'Ocorreu um erro ao processar o arquivo.');
@@ -724,6 +832,106 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [rawData, filterStartDate, filterEndDate, selectedUnits]);
 
+  useEffect(() => {
+    if (!rawData) return;
+    
+    const yearsInfo = new Set<string>();
+    rawData.forEach(r => yearsInfo.add(r.date.getFullYear().toString()));
+    const availYears = Array.from(yearsInfo).sort((a,b) => b.localeCompare(a));
+    setMensalAvailableYears(availYears);
+    
+    if (!availYears.includes(mensalSelectedYear) && availYears.length > 0) {
+       setMensalSelectedYear(availYears[0]);
+    }
+  }, [rawData]);
+
+  useEffect(() => {
+    if (!rawData) return;
+
+    // Se nenhum mercado selecionado, usar todos disponíveis (ou inicializar)
+    const marketsToUse = mensalSelectedMarkets.length > 0 ? mensalSelectedMarkets : availableUnits;
+    if (marketsToUse.length === 0) return;
+
+    const dataByMonth = new Map<number, Record<string, number>>();
+    // Inicializar meses 0 a 11
+    for (let i = 0; i < 12; i++) {
+        const monthObj: Record<string, number> = {};
+        marketsToUse.forEach(m => monthObj[m] = 0);
+        dataByMonth.set(i, monthObj);
+    }
+
+    const getTaxRateForClient = (clientName: string) => {
+        const cLower = clientName.toLowerCase();
+        if (cLower.includes('ifood')) return 0.23;
+        if (cLower.includes('rappi')) return 0.20;
+        return 0; // Default or Outros is 0
+    };
+
+    const yearData = rawData.filter(row => row.date.getFullYear().toString() === mensalSelectedYear);
+    
+    // Sort to apply the transaction grouping logic (by client and date)
+    const sortedData = [...yearData].sort((a, b) => {
+        const clientA = a.client || 'Desconhecido';
+        const clientB = b.client || 'Desconhecido';
+        if (clientA !== clientB) return clientA.localeCompare(clientB);
+        return a.date.getTime() - b.date.getTime();
+    });
+
+    let currentTxStartTime = 0;
+    let currentTxClient = '';
+    
+    // First, process non-volume metrics which just sum up per item
+    if (mensalMetric !== 'volume') {
+      yearData.forEach(row => {
+          const clientName = row.client || 'Desconhecido';
+          if (!marketsToUse.includes(clientName)) return;
+
+          const monthIdx = row.date.getMonth();
+          const sp = row.salePrice || 0;
+          const cp = row.costPrice || 0;
+          const taxRate = getTaxRateForClient(clientName);
+          const ded = sp * taxRate;
+          const mb = sp - cp;
+          const ml = mb - ded;
+
+          let valToAdd = 0;
+          if (mensalMetric === 'faturamento') valToAdd = sp;
+          else if (mensalMetric === 'margem_bruta') valToAdd = mb;
+          else if (mensalMetric === 'margem_liquida') valToAdd = ml;
+
+          const monthObj = dataByMonth.get(monthIdx)!;
+          monthObj[clientName] = (monthObj[clientName] || 0) + valToAdd;
+      });
+    } else {
+      // If volume, we count unique transactions
+      sortedData.forEach(row => {
+          const clientName = row.client || 'Desconhecido';
+          if (!marketsToUse.includes(clientName)) return;
+
+          const monthIdx = row.date.getMonth();
+          const rowTime = row.date.getTime();
+          
+          if (clientName !== currentTxClient || (rowTime - currentTxStartTime) > 3000) {
+              const monthObj = dataByMonth.get(monthIdx)!;
+              monthObj[clientName] = (monthObj[clientName] || 0) + 1;
+              currentTxClient = clientName;
+              currentTxStartTime = rowTime;
+          }
+      });
+    }
+
+    const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    
+    const formattedData = Array.from(dataByMonth.entries()).map(([mIdx, mData]) => {
+        return {
+            name: monthNames[mIdx],
+            ...mData
+        };
+    });
+
+    setMonthlyPerformanceData(formattedData);
+  }, [rawData, mensalSelectedMarkets, mensalSelectedYear, mensalMetric, availableUnits]);
+
   const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
@@ -930,6 +1138,19 @@ export default function App() {
         
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           <button
+            onClick={() => { setActiveTab('imports'); setIsSidebarOpen(false); }}
+            className={cn(
+              "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
+              activeTab === 'imports' 
+                ? "bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" 
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
+            )}
+          >
+            <UploadCloud className="w-5 h-5" />
+            <span>Importações</span>
+          </button>
+
+          <button
             onClick={() => { setActiveTab('vendas'); setIsSidebarOpen(false); }}
             className={cn(
               "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
@@ -1008,6 +1229,19 @@ export default function App() {
           </button>
           
           <button
+            onClick={() => { setActiveTab('desempenho_mensal'); setIsSidebarOpen(false); }}
+            className={cn(
+              "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
+              activeTab === 'desempenho_mensal' 
+                ? "bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" 
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
+            )}
+          >
+            <TrendingUp className="w-5 h-5" />
+            <span>Desempenho Mensal</span>
+          </button>
+          
+          <button
             onClick={() => { setActiveTab('plano_acao'); setIsSidebarOpen(false); }}
             className={cn(
               "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
@@ -1018,6 +1252,19 @@ export default function App() {
           >
             <LayoutDashboard className="w-5 h-5" />
             <span>Plano de Ação</span>
+          </button>
+          
+          <button
+            onClick={() => { setActiveTab('gestao_validade'); setIsSidebarOpen(false); }}
+            className={cn(
+              "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
+              activeTab === 'gestao_validade' 
+                ? "bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" 
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
+            )}
+          >
+            <Calendar className="w-5 h-5" />
+            <span>Gestão de Validade</span>
           </button>
           
           <button
@@ -1045,9 +1292,22 @@ export default function App() {
             <ShoppingBag className="w-5 h-5" />
             <span>Análise de Cesta</span>
           </button>
+
+          <button
+            onClick={() => { setActiveTab('mapa_calor'); setIsSidebarOpen(false); }}
+            className={cn(
+              "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
+              activeTab === 'mapa_calor' 
+                ? "bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" 
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
+            )}
+          >
+            <MapIcon className="w-5 h-5" />
+            <span>Mapa de Calor</span>
+          </button>
         </nav>
 
-        <div className="p-4 border-t border-slate-100 dark:border-slate-800">
+        <div className="p-4 border-t border-slate-100 dark:border-slate-800 space-y-2">
           <button
             onClick={() => setIsDarkMode(!isDarkMode)}
             className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
@@ -1081,10 +1341,12 @@ export default function App() {
             
             <header>
               <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-                {activeTab === 'vendas' ? 'Dashboard de Vendas' : activeTab === 'lucro_fluxo' ? 'Lucro e Fluxo Diário' : activeTab === 'dispersao_mercados' ? 'Dispersão de Mercados' : activeTab === 'dispersao_produtos' ? 'Dispersão de Produtos' : activeTab === 'desempenho_tipo' ? 'Desempenho Tipo' : activeTab === 'plano_acao' ? 'Plano de Ação' : activeTab === 'pos_estocagem' ? 'Pós-Estocagem' : activeTab === 'analise_cesta' ? 'Análise de Cesta' : 'Indicadores de Risco'}
+                {activeTab === 'imports' ? 'Importar Planilhas de Vendas' : activeTab === 'vendas' ? 'Dashboard de Vendas' : activeTab === 'lucro_fluxo' ? 'Lucro e Fluxo Diário' : activeTab === 'dispersao_mercados' ? 'Dispersão de Mercados' : activeTab === 'dispersao_produtos' ? 'Dispersão de Produtos' : activeTab === 'desempenho_tipo' ? 'Desempenho Tipo' : activeTab === 'desempenho_mensal' ? 'Desempenho Mensal' : activeTab === 'plano_acao' ? 'Plano de Ação' : activeTab === 'gestao_validade' ? 'Gestão de Validade' : activeTab === 'pos_estocagem' ? 'Pós-Estocagem' : activeTab === 'analise_cesta' ? 'Análise de Cesta' : activeTab === 'mapa_calor' ? 'Mapa de Calor' : 'Indicadores de Risco'}
               </h1>
               <p className="text-slate-500 dark:text-slate-400 mt-2">
-                {activeTab === 'vendas' 
+                {activeTab === 'imports' 
+                  ? 'Importe a planilha de Transações Cashless para cada respectivo mês do ano.'
+                  : activeTab === 'vendas' 
                   ? 'Importe sua planilha de vendas para calcular a velocidade média e o tempo de venda por produto.'
                   : activeTab === 'lucro_fluxo' 
                   ? 'Cruze o volume físico de vendas com o funil financeiro (Faturamento > Margem Bruta > Margem Líquida).'
@@ -1094,68 +1356,79 @@ export default function App() {
                   ? 'Visualize a alta performance vs. rentabilidade de cada produto considerando o ticket isolado por categoria.'
                   : activeTab === 'desempenho_tipo'
                   ? 'Acompanhe a linha do tempo e o desempenho de volume diário dos produtos selecionados.'
+                  : activeTab === 'desempenho_mensal'
+                  ? 'Acompanhe o desempenho de faturamento, volume e margem de cada mercado mês a mês durante um ano.'
+                  : activeTab === 'gestao_validade'
+                  ? 'Combine dados de estoque, giro e afinidade para prevenir perdas e sugerir cortes de preço ou ancoragens de produtos.'
                   : activeTab === 'pos_estocagem'
                   ? 'Cruze as planilhas de planogramas e vendas para encontrar os produtos faltantes e otimizar as prateleiras.'
                   : activeTab === 'plano_acao'
                   ? 'Classifique automaticamente e exporte tarefas operacionais utilizando matriz de dispersão de destino e densidade lucrocntrica.'
                   : activeTab === 'analise_cesta'
                   ? 'Analise o comportamento de compra conjunta (co-ocorrência) e o perfil da cesta de cada produto.'
+                  : activeTab === 'mapa_calor'
+                  ? 'Desenhe as prateleiras e visualize as zonas mais "quentes" através de um mapa de calor.'
                   : 'Veja alertas de risco para seus produtos.'}
               </p>
             </header>
 
-            {/* Upload Area (Only show if no stats and not in pos_estocagem) */}
-            {stats.length === 0 && !rawData && activeTab !== 'pos_estocagem' && (
-              <div className="space-y-6">
-                <div
-                  onDrop={handleDrop}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onClick={() => fileInputRef.current?.click()}
-                  className={cn(
-                    "relative flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-2xl transition-all cursor-pointer overflow-hidden",
-                    isDragging 
-                      ? "border-orange-500 bg-orange-50 dark:bg-orange-900/20" 
-                      : "border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-600",
-                    isLoading && "pointer-events-none opacity-70"
-                  )}
-                >
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    onChange={handleFileInput} 
-                    accept=".xlsx, .xls, .csv" 
-                    className="hidden" 
-                  />
+            {activeTab === 'imports' && (
+              <div className="space-y-6 fade-in">
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6">Planilha de Vendas (Transações Cashless)</h2>
                   
-                  {isLoading ? (
-                    <div className="flex flex-col items-center space-y-4">
-                      <Loader2 className="w-10 h-10 text-orange-500 animate-spin" />
-                      <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Processando planilha...</p>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center space-y-4 text-center p-6">
-                      <div className="p-4 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 rounded-full">
-                        <UploadCloud className="w-8 h-8" />
-                      </div>
-                      <div>
-                        <p className="text-base font-semibold text-slate-700 dark:text-slate-200">
-                          Clique para enviar ou arraste sua planilha aqui
-                        </p>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                          Suporta arquivos .xlsx, .xls e .csv
-                        </p>
-                      </div>
+                  {error && (
+                    <div className="flex items-center space-x-3 p-4 mb-6 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-xl border border-red-200 dark:border-red-800">
+                      <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                      <p className="text-sm font-medium">{error}</p>
                     </div>
                   )}
-                </div>
 
-                {error && (
-                  <div className="flex items-center space-x-3 p-4 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-xl border border-red-200 dark:border-red-800">
-                    <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                    <p className="text-sm font-medium">{error}</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {MONTHS.map((month) => {
+                      const hasData = Boolean(monthlyData[month]);
+
+                      return (
+                         <div 
+                           key={month} 
+                           className={cn(
+                             "relative flex flex-col p-4 border rounded-xl transition-all",
+                             hasData 
+                               ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/10" 
+                               : "border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:border-orange-300 dark:hover:border-orange-700"
+                           )}
+                         >
+                           <div className="flex items-center justify-between mb-3">
+                             <h3 className="font-semibold text-slate-800 dark:text-slate-200">{month}</h3>
+                             {hasData && (
+                               <div className="p-1 bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 rounded-full">
+                                 <Check className="w-4 h-4" />
+                               </div>
+                             )}
+                           </div>
+                           
+                           <label className="flex-1 flex flex-col items-center justify-center py-4 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-lg hover:bg-white dark:hover:bg-slate-900 cursor-pointer transition-colors">
+                              <input 
+                                type="file" 
+                                className="hidden" 
+                                accept=".xlsx, .xls, .csv" 
+                                onChange={(e) => {
+                                  if (e.target.files && e.target.files.length > 0) {
+                                    processFile(e.target.files[0], month);
+                                  }
+                                }}
+                                disabled={isLoading}
+                              />
+                              <UploadCloud className={cn("w-6 h-6 mb-2", hasData ? "text-emerald-500" : "text-slate-400")} />
+                              <span className="text-xs font-medium text-slate-500 dark:text-slate-400 text-center px-2">
+                                {hasData ? "Atualizar Planilha" : "Fazer Upload"}
+                              </span>
+                           </label>
+                         </div>
+                      );
+                    })}
                   </div>
-                )}
+                </div>
               </div>
             )}
 
@@ -1194,7 +1467,7 @@ export default function App() {
             )}
 
             {/* Results Area */}
-            {stats.length > 0 && activeTab !== 'pos_estocagem' && activeTab !== 'analise_cesta' && (
+            {stats.length > 0 && activeTab !== 'pos_estocagem' && activeTab !== 'analise_cesta' && activeTab !== 'mapa_calor' && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -1903,6 +2176,100 @@ export default function App() {
                   </div>
                 )}
                 
+                {activeTab === 'desempenho_mensal' && (
+                  <div className="space-y-6">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-6 overflow-hidden transition-colors">
+                      <div className="flex flex-col md:flex-row gap-4 mb-6 relative z-10">
+                        <div className="flex-1">
+                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Ano</label>
+                          <select 
+                            value={mensalSelectedYear} 
+                            onChange={(e) => setMensalSelectedYear(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-lg focus:ring-orange-500 focus:border-orange-500 block p-2.5 dark:bg-slate-950 dark:border-slate-800 dark:text-white"
+                          >
+                            {mensalAvailableYears.length === 0 && <option value={mensalSelectedYear}>{mensalSelectedYear}</option>}
+                            {mensalAvailableYears.map(y => <option key={y} value={y}>{y}</option>)}
+                          </select>
+                        </div>
+                        
+                        <div className="flex-1">
+                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Métrica</label>
+                          <select 
+                            value={mensalMetric} 
+                            onChange={(e) => setMensalMetric(e.target.value as any)}
+                            className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-lg focus:ring-orange-500 focus:border-orange-500 block p-2.5 dark:bg-slate-950 dark:border-slate-800 dark:text-white"
+                          >
+                            <option value="faturamento">Faturamento Total</option>
+                            <option value="margem_bruta">Margem Bruta</option>
+                            <option value="margem_liquida">Margem Líquida</option>
+                            <option value="volume">Volume de Vendas</option>
+                          </select>
+                        </div>
+
+                        <div className="flex-[2]">
+                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Mercados</label>
+                          <UnitDropdown 
+                             availableUnits={availableUnits}
+                             selectedUnits={mensalSelectedMarkets.length > 0 ? mensalSelectedMarkets : availableUnits}
+                             onChange={setMensalSelectedMarkets}
+                          />
+                        </div>
+                      </div>
+
+                      {monthlyPerformanceData.length > 0 ? (
+                        <div className="mt-8">
+                          <ResponsiveContainer width="100%" height={450}>
+                            <LineChart data={monthlyPerformanceData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#334155' : '#e2e8f0'} />
+                              <XAxis dataKey="name" tick={{ fill: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 12 }} axisLine={{ stroke: isDarkMode ? '#334155' : '#cbd5e1' }} />
+                              <YAxis 
+                                tickFormatter={(val) => mensalMetric === 'volume' ? `${val}` : `R$ ${val.toLocaleString('pt-BR')}`}
+                                tick={{ fill: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 12 }} 
+                                axisLine={{ stroke: isDarkMode ? '#334155' : '#cbd5e1' }}
+                                tickLine={false}
+                                width={80}
+                              />
+                              <RechartsTooltip 
+                                formatter={(value: any, name: string) => [
+                                  mensalMetric === 'volume' 
+                                    ? value 
+                                    : `R$ ${Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 
+                                  name
+                                ]}
+                                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', backgroundColor: isDarkMode ? '#1e293b' : '#ffffff', color: isDarkMode ? '#f8fafc' : '#0f172a' }}
+                              />
+                              <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                              
+                              {(mensalSelectedMarkets.length > 0 ? mensalSelectedMarkets : availableUnits).map((market, idx) => {
+                                 const hue = (idx * 137.5) % 360;
+                                 return (
+                                   <Line 
+                                     key={market}
+                                     type="monotone"
+                                     dataKey={market}
+                                     name={market}
+                                     stroke={`hsl(${hue}, 70%, 50%)`}
+                                     strokeWidth={2}
+                                     dot={{ r: 3, fill: `hsl(${hue}, 70%, 50%)` }}
+                                     activeDot={{ r: 6 }}
+                                   />
+                                 );
+                              })}
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-12">
+                          <TrendingUp className="w-10 h-10 text-slate-400 mb-4" />
+                          <p className="text-slate-500 dark:text-slate-400 font-medium text-center">
+                            Nenhum dado encontrado para os filtros selecionados.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
                 {activeTab === 'plano_acao' && (
                   <div className="space-y-6">
                     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-6 overflow-hidden transition-colors">
@@ -2004,6 +2371,8 @@ export default function App() {
 
             {activeTab === 'pos_estocagem' && <PosEstocagem />}
             {activeTab === 'analise_cesta' && rawData && <AnaliseCesta rawData={rawData} />}
+            {activeTab === 'mapa_calor' && rawData && <MapaCalor rawData={rawData} availableUnits={availableUnits} />}
+            {activeTab === 'gestao_validade' && rawData && <GestaoValidade rawData={rawData} availableUnits={availableUnits} />}
           </div>
         </div>
       </main>

@@ -1,0 +1,36 @@
+{
+  "entities": {
+    "SpreadsheetData": {
+      "title": "SpreadsheetData",
+      "description": "User's uploaded spreadsheet data",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "The UID of the user who owns this data"
+        },
+        "rawData": {
+          "type": "string",
+          "description": "JSON stringified raw data to easily bypass query limits on arrays of objects"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "rawData", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/spreadsheets/{spreadsheetId}": {
+      "schema": {
+        "$ref": "#/entities/SpreadsheetData"
+      },
+      "description": "Stores user spreadsheets. Usually spreadsheetId is the userId."
+    }
+  }
+}

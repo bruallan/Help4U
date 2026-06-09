@@ -111,7 +111,7 @@ export function AnaliseCesta({ rawData }: AnaliseCestaProps) {
     );
   }
 
-  const topCombinations = Object.entries(selectedStats.coOccurrences)
+  const topCombinations = (Object.entries(selectedStats.coOccurrences) as [string, number][])
     .sort((a, b) => b[1] - a[1])
     .slice(0, 50); // Show top 50 combinations
 
