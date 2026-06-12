@@ -10,5 +10,9 @@ service cloud.firestore {
     match /spreadsheets/{spreadsheetId} {
       allow read, write: if true;
     }
+
+    match /settings/{settingId} {
+      allow read, write: if true;
+    }
   }
 }

@@ -17,6 +17,9 @@ export function GestaoValidade({ rawData, availableUnits }: GestaoValidadeProps)
   const [manualInputs, setManualInputs] = useState<Record<string, { date: string; qty: number }>>({});
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isFetchingVMPay, setIsFetchingVMPay] = useState(false);
+  const [vmpayLog, setVmpayLog] = useState<string[]>([]);
+  const [showLogs, setShowLogs] = useState(false);
 
   React.useEffect(() => {
     async function loadData() {
@@ -58,6 +61,30 @@ export function GestaoValidade({ rawData, availableUnits }: GestaoValidadeProps)
       setSelectedMarket(availableUnits[0]);
     }
   }, [availableUnits, selectedMarket]);
+
+  const handleFetchVMPay = async () => {
+    setIsFetchingVMPay(true);
+    setVmpayLog([]);
+    try {
+      const res = await fetch("/api/load-validades");
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Erro no servidor");
+      }
+      if (data.data) {
+        setManualInputs(prev => ({...prev, ...data.data}));
+      }
+      if (data.logs) {
+        setVmpayLog(data.logs);
+        setShowLogs(true);
+      }
+    } catch (e: any) {
+       console.error("VMPay Fetch Error", e);
+       alert("Erro ao buscar dados: " + e.message);
+    } finally {
+       setIsFetchingVMPay(false);
+    }
+  };
 
   // Computes
   const skuMetrics = useMemo(() => {
@@ -247,6 +274,33 @@ export function GestaoValidade({ rawData, availableUnits }: GestaoValidadeProps)
               Combine os dados estáticos (estoque a vencer) com o giro dinâmico e o cálculo de afinidade para gerar ações automáticas 
               (Tração própria vs. Ancoragem). Risco (IR ≥ 0.9).
             </p>
+          </div>
+          <div className="flex gap-2 relative">
+            <button
+               onClick={handleFetchVMPay}
+               disabled={isFetchingVMPay}
+               className="inline-flex items-center space-x-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
+             >
+               {isFetchingVMPay ? <Activity className="w-4 h-4 animate-spin" /> : <TrendingDown className="w-4 h-4" />}
+               <span>Buscar Sistema</span>
+             </button>
+             {vmpayLog.length > 0 && (
+               <button
+                 onClick={() => setShowLogs(!showLogs)}
+                 className="p-2 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+               >
+                 <AlertCircle className="w-5 h-5 text-slate-500 dark:text-slate-400" />
+               </button>
+             )}
+             
+             {showLogs && (
+               <div className="absolute top-12 right-0 w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-lg rounded-xl p-4 z-50">
+                 <h4 className="font-semibold text-sm mb-2 text-slate-900 dark:text-white">Logs de Importação</h4>
+                 <ul className="text-xs space-y-1 text-slate-600 dark:text-slate-400 max-h-40 overflow-y-auto">
+                   {vmpayLog.map((l, i) => <li key={i}>{l}</li>)}
+                 </ul>
+               </div>
+             )}
           </div>
         </div>
 

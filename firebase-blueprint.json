@@ -23,6 +23,21 @@
         }
       },
       "required": ["uid", "rawData", "createdAt", "updatedAt"]
+    },
+    "AppSetting": {
+      "title": "AppSetting",
+      "description": "Global application settings such as validadeInputs",
+      "type": "object",
+      "properties": {
+        "inputs": {
+          "type": "object",
+          "description": "Record of validade inputs per SKU"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
     }
   },
   "firestore": {
@@ -31,6 +46,12 @@
         "$ref": "#/entities/SpreadsheetData"
       },
       "description": "Stores user spreadsheets. Usually spreadsheetId is the userId."
+    },
+    "/settings/{settingId}": {
+      "schema": {
+        "$ref": "#/entities/AppSetting"
+      },
+      "description": "Stores global app settings"
     }
   }
 }
