@@ -6,6 +6,8 @@ import { UnitDropdown } from './Dropdowns';
 import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 interface GestaoValidadeProps {
   rawData: MappedRow[];
   availableUnits: string[];
@@ -66,7 +68,7 @@ export function GestaoValidade({ rawData, availableUnits }: GestaoValidadeProps)
     setIsFetchingVMPay(true);
     setVmpayLog([]);
     try {
-      const res = await fetch("/api/load-validades");
+      const res = await fetch(`${API_BASE}/api/load-validades`);
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || "Erro no servidor");

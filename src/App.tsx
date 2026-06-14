@@ -22,6 +22,8 @@ import { GestaoValidade } from './components/GestaoValidade';
 import { auth, db } from './lib/firebase';
 import { doc, getDoc, setDoc, serverTimestamp, collection, getDocs, query } from 'firebase/firestore';
 
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -69,7 +71,7 @@ export default function App() {
         let globalMinD: Date | null = null;
         let globalMaxD: Date | null = null;
 
-        const res = await fetch('/api/sales');
+        const res = await fetch(`${API_BASE}/api/sales`);
         if (!res.ok) {
            throw new Error('Falha ao carregar vendas do database');
         }
@@ -125,47 +127,61 @@ export default function App() {
   
   const [rawData, setRawData] = useState<MappedRow[] | null>(null);
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    const checkSyncStatus = async () => {
-      try {
-        const res = await fetch('/api/sync-status');
-        if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
-          const data = await res.json();
-          setSyncStatus(data);
-          setIsSyncing(data.isSyncing);
-        }
-      } catch (e) {
-        console.error("Failed to fetch sync status", e);
-      }
-    };
-    
-    checkSyncStatus();
-    interval = setInterval(checkSyncStatus, 3000);
-    return () => clearInterval(interval);
-  }, []);
+  const syncAbortControllerRef = useRef<AbortController | null>(null);
 
   const handleSyncVMPay = async () => {
     if (isSyncing) return;
     setIsSyncing(true);
+    setSyncStatus({ isSyncing: true, status: 'loading', currentDate: '', totalDays: 0, currentDay: 0, error: '' });
+    syncAbortControllerRef.current = new AbortController();
+
     try {
-      const res = await fetch('/api/trigger-sync-all');
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Servidor retornou erro ${res.status}: ${text.substring(0, 100)}`);
+      const resDates = await fetch(`${API_BASE}/api/missing-dates`);
+      if (!resDates.ok) {
+        const txt = await resDates.text();
+        throw new Error(`Servidor retornou erro ${resDates.status}: ${txt}`);
       }
-      
-      const isJson = res.headers.get('content-type')?.includes('application/json');
-      if (!isJson) {
-        throw new Error('Servidor retornou uma resposta inválida não-JSON.');
+      const data = await resDates.json();
+      const missingDates: string[] = data.missingDates || [];
+
+      if (missingDates.length === 0) {
+        setSyncStatus({ isSyncing: false, status: 'completed', error: '', currentDate: '', totalDays: 0, currentDay: 0 });
+        setIsSyncing(false);
+        alert('Tudo atualizado! Nenhum dia faltando.');
+        return;
       }
-      
-      const data = await res.json();
-      if (!data.success) {
-        throw new Error(data.message || data.error || 'Erro ao sincronizar dados da API');
+
+      let currentDay = 0;
+      for (const date of missingDates) {
+        if (syncAbortControllerRef.current?.signal.aborted) {
+          setSyncStatus(prev => ({...prev, status: 'stopped', isSyncing: false}));
+          setIsSyncing(false);
+          return;
+        }
+        
+        currentDay++;
+        setSyncStatus({ isSyncing: true, status: 'syncing', currentDate: date, totalDays: missingDates.length, currentDay, error: '' });
+        
+        const syncRes = await fetch(`${API_BASE}/api/sync-date`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date }),
+          signal: syncAbortControllerRef.current.signal
+        });
+        
+        if (!syncRes.ok) {
+           console.error(`Falha ao sincronizar o dia ${date}`);
+        }
+        
+        await new Promise(r => setTimeout(r, 1000));
       }
-      // Não damos alert pesado, já vai mostrar a progress bar na UI
+
+      setSyncStatus({ isSyncing: false, status: 'completed', error: '', currentDate: '', totalDays: missingDates.length, currentDay });
+      setIsSyncing(false);
+      window.location.reload(); 
     } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      console.error(err);
       alert(`Falha ao iniciar sincronização: ${err.message}`);
       setIsSyncing(false);
     }
@@ -1223,16 +1239,12 @@ export default function App() {
                 <button
                   onClick={async () => {
                     if (window.confirm("Deseja realmente parar a sincronização?")) {
-                      try {
-                        // Otimisticamente parar a UI para dar feedback imediato
-                        setIsSyncing(false); 
-                        if (syncStatus) {
-                          setSyncStatus({...syncStatus, isSyncing: false, status: 'stopped'});
-                        }
-                        const res = await fetch('/api/stop-sync', { method: 'POST' });
-                        if (!res.ok) throw new Error('Falha ao parar sincronização');
-                      } catch (e: any) {
-                        alert(e.message);
+                      if (syncAbortControllerRef.current) {
+                        syncAbortControllerRef.current.abort();
+                      }
+                      setIsSyncing(false); 
+                      if (syncStatus) {
+                        setSyncStatus({...syncStatus, isSyncing: false, status: 'stopped'});
                       }
                     }
                   }}
