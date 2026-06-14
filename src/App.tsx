@@ -20,7 +20,7 @@ import { AnaliseCesta } from './components/AnaliseCesta';
 import { MapaCalor } from './components/MapaCalor';
 import { GestaoValidade } from './components/GestaoValidade';
 import { auth, db } from './lib/firebase';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, collection, getDocs, query } from 'firebase/firestore';
 
 export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -60,58 +60,50 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  const [monthlyData, setMonthlyData] = useState<Record<string, MappedRow[]>>({});
-  const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
   useEffect(() => {
     const loadGlobalData = async () => {
       setIsLoading(true);
       try {
-        const newMonthlyData: Record<string, MappedRow[]> = {};
-        let combinedRows: MappedRow[] = [];
         const uniqueClients = new Set<string>();
+        let globalMinD: Date | null = null;
+        let globalMaxD: Date | null = null;
 
-        // Fetch concurrently
-        await Promise.all(MONTHS.map(async (month) => {
-          try {
-            const docSnap = await getDoc(doc(db, 'spreadsheets', `global_${month}`));
-            if (docSnap.exists()) {
-              const data = docSnap.data();
-              let rawDataStr = data.rawData;
-              
-              if (!rawDataStr && data.chunksCount) {
-                let fullStr = '';
-                for (let i = 0; i < data.chunksCount; i++) {
-                  const chunkSnap = await getDoc(doc(db, 'spreadsheets', `global_${month}_chunk_${i}`));
-                  if (chunkSnap.exists()) {
-                    fullStr += chunkSnap.data().data;
-                  }
-                }
-                rawDataStr = fullStr;
-              }
+        const res = await fetch('/api/sales');
+        if (!res.ok) {
+           throw new Error('Falha ao carregar vendas do database');
+        }
+        
+        const json = await res.json();
+        const salesRows = json.data || [];
+        
+        const combinedRows = salesRows.map((row: any) => {
+          const dayD = new Date(row.dayDate);
+          if (!globalMinD || dayD.getTime() < globalMinD.getTime()) globalMinD = dayD;
+          if (!globalMaxD || dayD.getTime() > globalMaxD.getTime()) globalMaxD = dayD;
+          
+          if (row.client) uniqueClients.add(row.client);
+          
+          return {
+            ...row,
+            date: new Date(row.date),
+            dayDate: dayD,
+            salePrice: Number(row.salePrice),
+            costPrice: Number(row.costPrice)
+          };
+        });
 
-              if (rawDataStr) {
-                const mappedRows = JSON.parse(rawDataStr).map((row: any) => ({
-                  ...row,
-                  date: new Date(row.date),
-                  dayDate: new Date(row.dayDate)
-                }));
-                newMonthlyData[month] = mappedRows;
-                combinedRows = combinedRows.concat(mappedRows);
-              }
-            }
-          } catch (err) {
-            console.error(`Error loading ${month} cloud data`, err);
-          }
-        }));
-
-        setMonthlyData(newMonthlyData);
+        if (globalMinD && globalMaxD) {
+          const minStr = globalMinD.toISOString().split('T')[0];
+          const maxStr = globalMaxD.toISOString().split('T')[0];
+          setDatasetMinDate(minStr);
+          setDatasetMaxDate(maxStr);
+          setFilterStartDate(minStr);
+          setFilterEndDate(maxStr);
+        }
 
         if (combinedRows.length > 0) {
-          combinedRows.forEach((r: any) => uniqueClients.add(r.client || r.unidade));
           const available = Array.from(uniqueClients).sort() as string[];
-          
           setAvailableUnits(available);
           setSelectedUnits(available);
           setRawData(combinedRows);
@@ -125,11 +117,59 @@ export default function App() {
     
     loadGlobalData();
   }, []);
-  
-  const [activeTab, setActiveTab] = useState<'vendas' | 'indicadores' | 'lucro_fluxo' | 'dispersao_mercados' | 'dispersao_produtos' | 'desempenho_tipo' | 'plano_acao' | 'pos_estocagem' | 'analise_cesta' | 'mapa_calor' | 'imports' | 'desempenho_mensal' | 'gestao_validade'>('imports');
+
+  const [activeTab, setActiveTab] = useState<'vendas' | 'indicadores' | 'lucro_fluxo' | 'dispersao_mercados' | 'dispersao_produtos' | 'desempenho_tipo' | 'plano_acao' | 'pos_estocagem' | 'analise_cesta' | 'mapa_calor' | 'desempenho_mensal' | 'gestao_validade'>('vendas');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<any>(null);
   
   const [rawData, setRawData] = useState<MappedRow[] | null>(null);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    const checkSyncStatus = async () => {
+      try {
+        const res = await fetch('/api/sync-status');
+        if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+          const data = await res.json();
+          setSyncStatus(data);
+          setIsSyncing(data.isSyncing);
+        }
+      } catch (e) {
+        console.error("Failed to fetch sync status", e);
+      }
+    };
+    
+    checkSyncStatus();
+    interval = setInterval(checkSyncStatus, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleSyncVMPay = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    try {
+      const res = await fetch('/api/trigger-sync-all');
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Servidor retornou erro ${res.status}: ${text.substring(0, 100)}`);
+      }
+      
+      const isJson = res.headers.get('content-type')?.includes('application/json');
+      if (!isJson) {
+        throw new Error('Servidor retornou uma resposta inválida não-JSON.');
+      }
+      
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.message || data.error || 'Erro ao sincronizar dados da API');
+      }
+      // Não damos alert pesado, já vai mostrar a progress bar na UI
+    } catch (err: any) {
+      alert(`Falha ao iniciar sincronização: ${err.message}`);
+      setIsSyncing(false);
+    }
+  };
   const [availableUnits, setAvailableUnits] = useState<string[]>([]);
   const [selectedUnits, setSelectedUnits] = useState<string[]>([]);
   const [datasetMinDate, setDatasetMinDate] = useState<string>('');
@@ -296,171 +336,6 @@ export default function App() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Exportação Vendas");
     XLSX.writeFile(wb, "exportacao_vendas.xlsx");
-  };
-
-  const processFile = async (file: File, month: string) => {
-    setIsLoading(true);
-    setError(null);
-    setFileName(file.name);
-    
-    try {
-      const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
-      
-      if (!workbook.SheetNames.length) {
-        throw new Error('A planilha está vazia.');
-      }
-      
-      const firstSheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[firstSheetName];
-      
-      const rows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 });
-      
-      if (rows.length < 2) {
-        throw new Error('A planilha não contém dados suficientes.');
-      }
-      
-      let headerRowIndex = -1;
-      let colMap = { date: -1, product: -1, buyer: -1, sale: -1, cost: -1, client: -1, category: -1, req: -1, pedido: -1 };
-
-      for (let i = 0; i < Math.min(rows.length, 50); i++) {
-        const row = rows[i];
-        if (!row || !Array.isArray(row)) continue;
-        const colIndex = row.findIndex(c => String(c).trim() === "Data/hora");
-        if (colIndex !== -1) {
-          headerRowIndex = i;
-          row.forEach((cell, idx) => {
-            const val = String(cell).trim();
-            const lower = val.toLowerCase();
-            if (val === "Data/hora" || lower === "data/hora") colMap.date = idx;
-            else if (val === "Produto" || lower === "produto") colMap.product = idx;
-            else if (val === "Número do cartão" || lower === "número do cartão") colMap.buyer = idx;
-            else if (val === "Valor (R$)" || lower.includes("valor")) colMap.sale = idx;
-            else if (val === "Preço de Custo (R$)" || lower.includes("custo")) colMap.cost = idx;
-            else if (lower.includes('cliente') || lower.includes('unidade') || lower.includes('mercado') || lower.includes('condomínio') || lower.includes('condominio')) colMap.client = idx;
-            else if (lower === 'categoria' || lower.includes('categoria')) colMap.category = idx;
-            else if (val === "Requisição" || lower === "requisição" || lower === "requisicao") colMap.req = idx;
-            else if (val === "Pedido" || lower === "pedido") colMap.pedido = idx;
-          });
-          break;
-        }
-      }
-
-      if (headerRowIndex === -1) {
-        throw new Error("Cabeçalho 'Data/hora' não encontrado nas primeiras 50 linhas.");
-      }
-      if (colMap.date === -1 || colMap.product === -1) {
-        throw new Error("As colunas 'Data/hora' e 'Produto' são obrigatórias.");
-      }
-      
-      let minD: Date | null = null;
-      let maxD: Date | null = null;
-      const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-      
-      const mappedRows: MappedRow[] = [];
-      const uniqueClients = new Set<string>();
-
-      for (let i = headerRowIndex + 1; i < rows.length; i++) {
-        const row = rows[i];
-        if (!row || row.length === 0) continue;
-        const dateVal = row[colMap.date];
-        if (!dateVal) continue;
-        const date = parseExcelDate(dateVal);
-        if (!date) continue;
-        const dayDate = startOfDay(date);
-        
-        if (!minD || dayDate.getTime() < minD.getTime()) minD = dayDate;
-        if (!maxD || dayDate.getTime() > maxD.getTime()) maxD = dayDate;
-
-        const productName = row[colMap.product];
-        if (productName == null || !String(productName).trim()) continue;
-
-        const buyerId = colMap.buyer !== -1 && row[colMap.buyer] != null ? String(row[colMap.buyer]).trim() : '';
-        const parseBRNumber = (val: any) => {
-          if (typeof val === 'number') return val;
-          if (typeof val === 'string') {
-            const clean = val.replace(/\./g, '').replace(',', '.');
-            return parseFloat(clean) || 0;
-          }
-          return 0;
-        };
-
-        const salePrice = colMap.sale !== -1 ? parseBRNumber(row[colMap.sale]) : 0;
-        const costPrice = colMap.cost !== -1 ? parseBRNumber(row[colMap.cost]) : 0;
-        const client = colMap.client !== -1 && row[colMap.client] != null ? String(row[colMap.client]).trim() : '';
-        const category = colMap.category !== -1 && row[colMap.category] != null ? String(row[colMap.category]).trim() : 'Sem Categoria';
-
-        const reqStr = colMap.req !== -1 && row[colMap.req] != null ? String(row[colMap.req]).trim() : '';
-        const pedStr = colMap.pedido !== -1 && row[colMap.pedido] != null ? String(row[colMap.pedido]).trim() : '';
-        const idCupom = reqStr || pedStr || `cupom_fantasma_${i}`; // fallback for empty rows if needed, but we keep it tracking
-
-        if (client) uniqueClients.add(client);
-
-        mappedRows.push({
-            date,
-            dayDate,
-            productName: String(productName).trim(),
-            buyerId,
-            salePrice,
-            costPrice,
-            client,
-            category,
-            idCupom
-        });
-      }
-      
-      if (minD && maxD) {
-        const minStr = minD.toISOString().split('T')[0];
-        const maxStr = maxD.toISOString().split('T')[0];
-        setDatasetMinDate(minStr);
-        setDatasetMaxDate(maxStr);
-        setFilterStartDate(minStr);
-        setFilterEndDate(maxStr);
-      }
-
-      const available = Array.from(uniqueClients).sort() as string[];
-      setAvailableUnits(available);
-      setSelectedUnits(available);
-      
-      const updatedMonthlyData = { ...monthlyData, [month]: mappedRows };
-      setMonthlyData(updatedMonthlyData);
-      
-      let combinedRows: MappedRow[] = [];
-      Object.values(updatedMonthlyData).forEach(rows => {
-         combinedRows = combinedRows.concat(rows);
-      });
-      
-      setRawData(combinedRows);
-      
-      try {
-        const jsonString = JSON.stringify(mappedRows);
-        const CHUNK_SIZE = 800000;
-        const chunks = [];
-        for (let i = 0; i < jsonString.length; i += CHUNK_SIZE) {
-          chunks.push(jsonString.slice(i, i + CHUNK_SIZE));
-        }
-
-        await setDoc(doc(db, 'spreadsheets', `global_${month}`), {
-          uid: 'global',
-          chunksCount: chunks.length,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        }, { merge: true });
-
-        for (let i = 0; i < chunks.length; i++) {
-          await setDoc(doc(db, 'spreadsheets', `global_${month}_chunk_${i}`), {
-            data: chunks[i]
-          });
-        }
-      } catch (err) {
-        console.error("Failed to save to cloud", err);
-      }
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Ocorreu um erro ao processar o arquivo.');
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   useEffect(() => {
@@ -1138,19 +1013,6 @@ export default function App() {
         
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           <button
-            onClick={() => { setActiveTab('imports'); setIsSidebarOpen(false); }}
-            className={cn(
-              "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
-              activeTab === 'imports' 
-                ? "bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400" 
-                : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
-            )}
-          >
-            <UploadCloud className="w-5 h-5" />
-            <span>Importações</span>
-          </button>
-
-          <button
             onClick={() => { setActiveTab('vendas'); setIsSidebarOpen(false); }}
             className={cn(
               "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
@@ -1309,6 +1171,15 @@ export default function App() {
 
         <div className="p-4 border-t border-slate-100 dark:border-slate-800 space-y-2">
           <button
+            onClick={handleSyncVMPay}
+            disabled={isSyncing}
+            className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 transition-colors disabled:opacity-50"
+          >
+            {isSyncing ? <Activity className="w-5 h-5 text-emerald-500 animate-spin" /> : <UploadCloud className="w-5 h-5 text-emerald-500" />}
+            <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar DB'}</span>
+          </button>
+          
+          <button
             onClick={() => setIsDarkMode(!isDarkMode)}
             className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
           >
@@ -1320,6 +1191,60 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
+        
+        {/* Sync Progress Bar */}
+        {syncStatus?.isSyncing && (
+          <div className="bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-100 dark:border-emerald-900/50 p-4 transition-colors">
+            <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center space-x-3">
+                <Activity className="w-5 h-5 text-emerald-500 animate-spin flex-shrink-0" />
+                <div>
+                  <h3 className="text-sm font-semibold text-emerald-900 dark:text-emerald-400">
+                    Sincronizando Base de Dados
+                  </h3>
+                  <p className="text-xs text-emerald-600 dark:text-emerald-500 mt-1">
+                    Processando dia {syncStatus.currentDay} de {syncStatus.totalDays} ({syncStatus.currentDate})
+                  </p>
+                </div>
+              </div>
+              <div className="w-full sm:w-80 max-w-sm flex items-center space-x-4">
+                <div className="flex-1">
+                  <div className="flex items-center justify-between text-xs text-emerald-700 dark:text-emerald-400 mb-2 font-medium">
+                    <span>Progresso</span>
+                    <span>{Math.round((syncStatus.currentDay / Math.max(1, syncStatus.totalDays)) * 100)}%</span>
+                  </div>
+                  <div className="h-2 w-full bg-emerald-200 dark:bg-emerald-900/50 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-emerald-500 transition-all duration-300 ease-out" 
+                      style={{ width: `${Math.round((syncStatus.currentDay / Math.max(1, syncStatus.totalDays)) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={async () => {
+                    if (window.confirm("Deseja realmente parar a sincronização?")) {
+                      try {
+                        // Otimisticamente parar a UI para dar feedback imediato
+                        setIsSyncing(false); 
+                        if (syncStatus) {
+                          setSyncStatus({...syncStatus, isSyncing: false, status: 'stopped'});
+                        }
+                        const res = await fetch('/api/stop-sync', { method: 'POST' });
+                        if (!res.ok) throw new Error('Falha ao parar sincronização');
+                      } catch (e: any) {
+                        alert(e.message);
+                      }
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 text-xs font-semibold rounded-lg hover:bg-red-200 flex-shrink-0 transition-colors"
+                >
+                  Parar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Mobile Header */}
         <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-3 flex items-center justify-between md:hidden transition-colors duration-300">
           <button onClick={() => setIsSidebarOpen(true)} className="text-slate-500 dark:text-slate-400 p-1">
@@ -1341,12 +1266,10 @@ export default function App() {
             
             <header>
               <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-                {activeTab === 'imports' ? 'Importar Planilhas de Vendas' : activeTab === 'vendas' ? 'Dashboard de Vendas' : activeTab === 'lucro_fluxo' ? 'Lucro e Fluxo Diário' : activeTab === 'dispersao_mercados' ? 'Dispersão de Mercados' : activeTab === 'dispersao_produtos' ? 'Dispersão de Produtos' : activeTab === 'desempenho_tipo' ? 'Desempenho Tipo' : activeTab === 'desempenho_mensal' ? 'Desempenho Mensal' : activeTab === 'plano_acao' ? 'Plano de Ação' : activeTab === 'gestao_validade' ? 'Gestão de Validade' : activeTab === 'pos_estocagem' ? 'Pós-Estocagem' : activeTab === 'analise_cesta' ? 'Análise de Cesta' : activeTab === 'mapa_calor' ? 'Mapa de Calor' : 'Indicadores de Risco'}
+                {activeTab === 'vendas' ? 'Dashboard de Vendas' : activeTab === 'lucro_fluxo' ? 'Lucro e Fluxo Diário' : activeTab === 'dispersao_mercados' ? 'Dispersão de Mercados' : activeTab === 'dispersao_produtos' ? 'Dispersão de Produtos' : activeTab === 'desempenho_tipo' ? 'Desempenho Tipo' : activeTab === 'desempenho_mensal' ? 'Desempenho Mensal' : activeTab === 'plano_acao' ? 'Plano de Ação' : activeTab === 'gestao_validade' ? 'Gestão de Validade' : activeTab === 'pos_estocagem' ? 'Pós-Estocagem' : activeTab === 'analise_cesta' ? 'Análise de Cesta' : activeTab === 'mapa_calor' ? 'Mapa de Calor' : 'Indicadores de Risco'}
               </h1>
               <p className="text-slate-500 dark:text-slate-400 mt-2">
-                {activeTab === 'imports' 
-                  ? 'Importe a planilha de Transações Cashless para cada respectivo mês do ano.'
-                  : activeTab === 'vendas' 
+                {activeTab === 'vendas' 
                   ? 'Importe sua planilha de vendas para calcular a velocidade média e o tempo de venda por produto.'
                   : activeTab === 'lucro_fluxo' 
                   ? 'Cruze o volume físico de vendas com o funil financeiro (Faturamento > Margem Bruta > Margem Líquida).'
@@ -1371,66 +1294,6 @@ export default function App() {
                   : 'Veja alertas de risco para seus produtos.'}
               </p>
             </header>
-
-            {activeTab === 'imports' && (
-              <div className="space-y-6 fade-in">
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
-                  <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6">Planilha de Vendas (Transações Cashless)</h2>
-                  
-                  {error && (
-                    <div className="flex items-center space-x-3 p-4 mb-6 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-xl border border-red-200 dark:border-red-800">
-                      <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                      <p className="text-sm font-medium">{error}</p>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {MONTHS.map((month) => {
-                      const hasData = Boolean(monthlyData[month]);
-
-                      return (
-                         <div 
-                           key={month} 
-                           className={cn(
-                             "relative flex flex-col p-4 border rounded-xl transition-all",
-                             hasData 
-                               ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/10" 
-                               : "border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:border-orange-300 dark:hover:border-orange-700"
-                           )}
-                         >
-                           <div className="flex items-center justify-between mb-3">
-                             <h3 className="font-semibold text-slate-800 dark:text-slate-200">{month}</h3>
-                             {hasData && (
-                               <div className="p-1 bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 rounded-full">
-                                 <Check className="w-4 h-4" />
-                               </div>
-                             )}
-                           </div>
-                           
-                           <label className="flex-1 flex flex-col items-center justify-center py-4 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-lg hover:bg-white dark:hover:bg-slate-900 cursor-pointer transition-colors">
-                              <input 
-                                type="file" 
-                                className="hidden" 
-                                accept=".xlsx, .xls, .csv" 
-                                onChange={(e) => {
-                                  if (e.target.files && e.target.files.length > 0) {
-                                    processFile(e.target.files[0], month);
-                                  }
-                                }}
-                                disabled={isLoading}
-                              />
-                              <UploadCloud className={cn("w-6 h-6 mb-2", hasData ? "text-emerald-500" : "text-slate-400")} />
-                              <span className="text-xs font-medium text-slate-500 dark:text-slate-400 text-center px-2">
-                                {hasData ? "Atualizar Planilha" : "Fazer Upload"}
-                              </span>
-                           </label>
-                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Global Filters */}
             {rawData && (
