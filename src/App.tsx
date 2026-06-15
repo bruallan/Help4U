@@ -22,9 +22,11 @@ import { GestaoValidade } from './components/GestaoValidade';
 import { auth, db } from './lib/firebase';
 import { doc, getDoc, setDoc, serverTimestamp, collection, getDocs, query } from 'firebase/firestore';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const API_BASE = (import.meta as any).env?.VITE_API_URL || '';
 
 export default function App() {
+  const processFile = (file: File) => { console.warn("Upload local inativo.") };
+
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('theme');
@@ -71,13 +73,14 @@ export default function App() {
         let globalMinD: Date | null = null;
         let globalMaxD: Date | null = null;
 
-        const res = await fetch(`${API_BASE}/api/sales`);
-        if (!res.ok) {
-           throw new Error('Falha ao carregar vendas do database');
-        }
-        
-        const json = await res.json();
-        const salesRows = json.data || [];
+        const { collection, getDocs } = await import('firebase/firestore');
+        const { db } = await import('./lib/firebase');
+
+        const querySnapshot = await getDocs(collection(db, "sales"));
+        const salesRows: any[] = [];
+        querySnapshot.forEach((doc) => {
+          salesRows.push(doc.data());
+        });
         
         const combinedRows = salesRows.map((row: any) => {
           const dayD = new Date(row.dayDate);
@@ -136,13 +139,30 @@ export default function App() {
     syncAbortControllerRef.current = new AbortController();
 
     try {
-      const resDates = await fetch(`${API_BASE}/api/missing-dates`);
-      if (!resDates.ok) {
-        const txt = await resDates.text();
-        throw new Error(`Servidor retornou erro ${resDates.status}: ${txt}`);
+      const { collection, getDocs, setDoc, doc, writeBatch } = await import('firebase/firestore');
+      const { db } = await import('./lib/firebase');
+
+      // Fetch existing dates in Firestore to determine what to sync
+      const salesQuery = await getDocs(collection(db, "sales"));
+      let maxDate = new Date('2026-01-01T00:00:00Z');
+      
+      salesQuery.forEach(doc => {
+        const d = new Date(doc.data().dayDate);
+        if (d > maxDate) maxDate = d;
+      });
+
+      const today = new Date();
+      today.setUTCHours(0, 0, 0, 0);
+
+      // Start fetching from the day after the max synced date, up to yesterday
+      const missingDates: string[] = [];
+      let currentDateToFetch = new Date(maxDate);
+      currentDateToFetch.setUTCDate(currentDateToFetch.getUTCDate() + 1);
+
+      while (currentDateToFetch < today) {
+        missingDates.push(currentDateToFetch.toISOString().split('T')[0]);
+        currentDateToFetch.setUTCDate(currentDateToFetch.getUTCDate() + 1);
       }
-      const data = await resDates.json();
-      const missingDates: string[] = data.missingDates || [];
 
       if (missingDates.length === 0) {
         setSyncStatus({ isSyncing: false, status: 'completed', error: '', currentDate: '', totalDays: 0, currentDay: 0 });
@@ -152,32 +172,157 @@ export default function App() {
       }
 
       let currentDay = 0;
-      for (const date of missingDates) {
+      let consecutive502Errors = 0;
+      let totalSavedRecords = 0;
+      const logsContent: string[] = [];
+      const log = (msg: string) => {
+        const t = `[${new Date().toISOString()}] ${msg}`;
+        logsContent.push(t);
+        console.log(t);
+      };
+
+      // Fetch Categories Map
+      log("Buscando categorias via proxy...");
+      const catRes = await fetch(`${API_BASE}/api/proxy/categories`);
+      let categoryDict: Record<number, string> = {};
+      if (catRes.ok) {
+        const cats = await catRes.json();
+        for (const c of cats) categoryDict[c.id] = c.name;
+      }
+
+      for (const dateStr of missingDates) {
         if (syncAbortControllerRef.current?.signal.aborted) {
           setSyncStatus(prev => ({...prev, status: 'stopped', isSyncing: false}));
           setIsSyncing(false);
           return;
         }
-        
+
         currentDay++;
-        setSyncStatus({ isSyncing: true, status: 'syncing', currentDate: date, totalDays: missingDates.length, currentDay, error: '' });
-        
-        const syncRes = await fetch(`${API_BASE}/api/sync-date`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ date }),
-          signal: syncAbortControllerRef.current.signal
-        });
-        
-        if (!syncRes.ok) {
-           console.error(`Falha ao sincronizar o dia ${date}`);
+        setSyncStatus({ isSyncing: true, status: 'syncing', currentDate: dateStr, totalDays: missingDates.length, currentDay, error: '' });
+
+        const startOfDay = new Date(dateStr + 'T00:00:00Z');
+        const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
+        const start_date_iso = startOfDay.toISOString().split('.')[0] + 'Z';
+        const end_date_iso = endOfDay.toISOString().split('.')[0] + 'Z';
+
+        let pagina = 1;
+        let temMais = true;
+        const allFacts: any[] = [];
+
+        log(`Sincronizando ${dateStr}...`);
+
+        while (temMais) {
+          if (syncAbortControllerRef.current?.signal.aborted) break;
+
+          const url = `${API_BASE}/api/proxy/cashless_facts?start_date=${start_date_iso}&end_date=${end_date_iso}&page=${pagina}`;
+          let success = false;
+          let retries = 0;
+          let fatos: any = null;
+
+          while (!success && retries < 3) {
+            try {
+              const res = await fetch(url, { signal: syncAbortControllerRef.current?.signal });
+              if (!res.ok) {
+                if (res.status === 502 || res.status === 504) consecutive502Errors++;
+                throw new Error(`Erro ${res.status}`);
+              }
+              fatos = await res.json();
+              success = true;
+              consecutive502Errors = 0;
+            } catch (e: any) {
+              if (e.name === 'AbortError') throw e;
+              retries++;
+              log(`Erro na pag ${pagina}: ${e.message}. Tentativa ${retries}/3`);
+              if (consecutive502Errors >= 3) {
+                throw new Error('Erro 502/504 Bad Gateway ocorreu 3 vezes seguidas no proxy. Interrompido.');
+              }
+              await new Promise(r => setTimeout(r, 1000 * retries));
+            }
+          }
+
+          if (!success || !fatos) {
+             throw new Error(`Falha irreparável ao buscar página ${pagina} no dia ${dateStr}`);
+          }
+
+          if (!fatos || fatos.length === 0) break;
+          allFacts.push(...fatos);
+          
+          if (fatos.length < 200) temMais = false;
+          pagina++;
+          if (pagina > 200) break; 
         }
-        
-        await new Promise(r => setTimeout(r, 1000));
-      }
+
+        if (allFacts.length > 0) {
+          log(`Gravando ${allFacts.length} registros no Firestore para ${dateStr}`);
+          // Mapear rows
+          const mappedRows = allFacts.map(fato => {
+            let buyerId = fato.masked_card_number;
+            if (!buyerId) buyerId = fato.order_id ? `${fato.order_id}` : (fato.uuid || "Desconhecido");
+            
+            const categId = fato.good?.category_id;
+            let categoryName = categId && categoryDict[categId] ? categoryDict[categId] : "Sem Categoria";
+
+            return {
+              date: fato.occurred_at,
+              dayDate: fato.occurred_at, 
+              productName: fato.good?.name || "Produto Desconhecido",
+              buyerId: buyerId,
+              salePrice: fato.value || 0,
+              costPrice: fato.cost_price || 0,
+              client: fato.place || "Desconhecido",
+              category: categoryName,
+              idCupom: (fato.uuid || fato.order_id || fato.id).toString()
+            };
+          });
+
+          const dbRows = mappedRows.map(r => ({
+            date: r.date,
+            dayDate: r.dayDate,
+            productName: r.productName,
+            buyerId: r.buyerId,
+            salePrice: String(r.salePrice),
+            costPrice: String(r.costPrice),
+            client: r.client,
+            category: r.category,
+            idCupom: r.idCupom
+          }));
+
+          // Firebase batch writes (limit 500 per batch)
+          const chunkSize = 400;
+          for (let i = 0; i < dbRows.length; i += chunkSize) {
+            const chunk = dbRows.slice(i, i + chunkSize);
+            const batch = writeBatch(db);
+            chunk.forEach(row => {
+              const docRef = doc(collection(db, "sales"), row.idCupom); 
+              batch.set(docRef, row);
+            });
+            await batch.commit();
+          }
+          totalSavedRecords += dbRows.length;
+        }
+
+      } // End of missingDates loop
 
       setSyncStatus({ isSyncing: false, status: 'completed', error: '', currentDate: '', totalDays: missingDates.length, currentDay });
       setIsSyncing(false);
+      log("Sincronização concluída com sucesso.");
+
+      // Disparar e-mail no backend com o consolidado
+      try {
+         await fetch(`${API_BASE}/api/send-sync-email`, {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({
+              dateStr: missingDates.join(', '),
+              mappedRowsCount: totalSavedRecords,
+              logsContent: logsContent.join('\n')
+           })
+         });
+      } catch (err) {
+         console.warn("Could not email out summary", err);
+      }
+
+      alert('Sincronização manual do Painel enviada via Proxy VMPay e concluída!\nNo entanto, recomendamos aguardar o Job do GitHub Actions que roda todo dia meia noite de forma assíncrona, robusta e livre de travamentos.');
       window.location.reload(); 
     } catch (err: any) {
       if (err.name === 'AbortError') return;

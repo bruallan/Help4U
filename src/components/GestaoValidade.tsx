@@ -6,7 +6,7 @@ import { UnitDropdown } from './Dropdowns';
 import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const API_BASE = (import.meta as any).env?.VITE_API_URL || '';
 
 interface GestaoValidadeProps {
   rawData: MappedRow[];
@@ -206,7 +206,8 @@ export function GestaoValidade({ rawData, availableUnits }: GestaoValidadeProps)
   // Compute Results Table
   const tableData = useMemo(() => {
     const arr = [];
-    for (const [sku, meta] of Array.from(skuMetrics.map.entries())) {
+    const typedMap = skuMetrics.map as Map<string, any>;
+    for (const [sku, meta] of Array.from(typedMap.entries())) {
        // Filter search
        if (searchSku && !sku.toLowerCase().includes(searchSku.toLowerCase())) continue;
 
