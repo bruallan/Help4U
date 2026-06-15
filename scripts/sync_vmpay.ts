@@ -106,7 +106,7 @@ async function runSync() {
       while (temMais) {
         if (abortReason) break;
         
-        const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${VMPAY_API_KEY}&start_date=${start_date_iso}&end_date=${end_date_iso}&per_page=50&page=${pagina}`;
+        const url = `${BASE_URL}/api/v1/cashless_transactions?access_token=${VMPAY_API_KEY}&start_date=${start_date_iso}&end_date=${end_date_iso}&per_page=50&page=${pagina}`;
         let success = false;
         let retries = 0;
         let fatosDaPagina = [];
@@ -176,13 +176,7 @@ async function runSync() {
             temMais = false; // Paramos se achamos algo no passado, ou se não tem mais página
         }
         pagina++;
-        pagesProcessed++;
-        if (pagesProcessed >= 5) {
-            log(`⏸️ Limite de 5 páginas atingido. Parando por hoje (ou até a próxima execução).`);
-            abortReason = "Limitado a 5 páginas por vez";
-            temMais = false;
-        }
-        await wait(3000); // Nunca fazemos DDoS no VM Pay. Um segundo de respiro.
+        await wait(2000); // 2 segundos p/ n ser bloqueado
       }
 
 
