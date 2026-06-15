@@ -19,7 +19,7 @@ app.get('/api/proxy/cashless_facts', async (req, res) => {
     if (!ACCESS_TOKEN) return res.status(401).json({ error: "Missing VMPAY_API_KEY" });
 
     const { start_date, end_date, page } = req.query;
-    const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${ACCESS_TOKEN}&start_date=${start_date}&end_date=${end_date}&per_page=5&page=${page || 1}`;
+    const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${ACCESS_TOKEN}&start_date=${start_date}&end_date=${end_date}&per_page=50&page=${page || 1}`;
     
     const fetchRes = await fetch(url);
     if (!fetchRes.ok) throw new Error(`VMPay erro: ${fetchRes.status}`);
@@ -130,7 +130,7 @@ app.post('/api/sync-single-day', async (req, res) => {
     const endDayTime = endOfDay.getTime();
 
     while (hasMore) {
-      const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${ACCESS_TOKEN}&start_date=${start_date}&end_date=${end_date}&per_page=5&page=${page}`;
+      const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${ACCESS_TOKEN}&start_date=${start_date}&end_date=${end_date}&per_page=50&page=${page}`;
       const fetchRes = await fetch(url, {
         headers: {
           'Accept': 'application/json',

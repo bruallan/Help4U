@@ -86,6 +86,7 @@ async function runSync() {
 
   try {
     let consecutive5xx = 0;
+    let pagesProcessed = 0;
     
     // Roda no máximo pelas datas faltantes
     for (const dateStr of missingDates) {
@@ -105,7 +106,7 @@ async function runSync() {
       while (temMais) {
         if (abortReason) break;
         
-        const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${VMPAY_API_KEY}&start_date=${start_date_iso}&end_date=${end_date_iso}&per_page=5&page=${pagina}`;
+        const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${VMPAY_API_KEY}&start_date=${start_date_iso}&end_date=${end_date_iso}&per_page=50&page=${pagina}`;
         let success = false;
         let retries = 0;
         let fatosDaPagina = [];
@@ -171,12 +172,19 @@ async function runSync() {
         
         // Se a página retornou algo mas tudo estava fora do período, ou se veio menos que um default (ex: 50), continuaremos até a página vir vazia ou todos serem filtrados.
         // Mas para garantir:
-        if (fatosDaPagina.length === 0 || temPassado || (fatosValidos.length === 0 && pagina > 5)) {
+        if (fatosDaPagina.length < 50 || temPassado) {
             temMais = false; // Paramos se achamos algo no passado, ou se não tem mais página
         }
         pagina++;
-        await wait(1000); // Nunca fazemos DDoS no VM Pay. Um segundo de respiro.
+        pagesProcessed++;
+        if (pagesProcessed >= 5) {
+            log(`⏸️ Limite de 5 páginas atingido. Parando por hoje (ou até a próxima execução).`);
+            abortReason = "Limitado a 5 páginas por vez";
+            temMais = false;
+        }
+        await wait(3000); // Nunca fazemos DDoS no VM Pay. Um segundo de respiro.
       }
+
 
       if (abortReason) break; // Sai do for de dias
 
