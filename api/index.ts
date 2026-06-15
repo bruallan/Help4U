@@ -127,8 +127,10 @@ app.post('/api/sync-single-day', async (req, res) => {
     let page = 1;
     let hasMore = true;
 
+    const endDayTime = endOfDay.getTime();
+
     while (hasMore) {
-      const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${ACCESS_TOKEN}&start_date=${start_date}&end_date=${end_date}&per_page=5&page=${page}`;
+      const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${ACCESS_TOKEN}&start_date=${start_date}&page=${page}`;
       const fetchRes = await fetch(url, {
         headers: {
           'Accept': 'application/json',
@@ -142,8 +144,14 @@ app.post('/api/sync-single-day', async (req, res) => {
         hasMore = false;
         break;
       }
-      allFacts.push(...data);
-      if (data.length < 5) hasMore = false;
+
+      const validData = data.filter((f: any) => new Date(f.occurred_at).getTime() <= endDayTime);
+      allFacts.push(...validData);
+
+      if (validData.length < data.length) {
+         hasMore = false; // hit boundary
+      }
+      
       page++;
     }
 

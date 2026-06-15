@@ -104,7 +104,7 @@ async function runSync() {
       while (temMais) {
         if (abortReason) break;
         
-        const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${VMPAY_API_KEY}&start_date=${start_date_iso}&end_date=${end_date_iso}&per_page=5&page=${pagina}`;
+        const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${VMPAY_API_KEY}&start_date=${start_date_iso}&page=${pagina}`;
         let success = false;
         let retries = 0;
         let fatosDaPagina = [];
@@ -153,10 +153,26 @@ async function runSync() {
            break;
         }
 
-        allFacts.push(...fatosDaPagina);
-        log(`Lida página ${pagina} do dia ${dateStr} com ${fatosDaPagina.length} registros.`);
+        // Removemos transações futuras deste dia, já que não temos end_date na URL
+        const endDayTime = endOfDay.getTime();
+        const startDayTime = startOfDay.getTime();
+
+        const fatosValidos = fatosDaPagina.filter((f: any) => {
+          const t = new Date(f.occurred_at).getTime();
+          return t >= startDayTime && t <= endDayTime;
+        });
+
+        // Verificamos se há transações ANTERIORES ao nosso dia (indicativo de que fomos longe demais descendo)
+        const temPassado = fatosDaPagina.some((f: any) => new Date(f.occurred_at).getTime() < startDayTime);
+
+        allFacts.push(...fatosValidos);
+        log(`Lida página ${pagina} do dia ${dateStr} com ${fatosValidos.length} registros no período (de ${fatosDaPagina.length} totais).`);
         
-        if (fatosDaPagina.length < 5) temMais = false;
+        // Se a página retornou algo mas tudo estava fora do período, ou se veio menos que um default (ex: 50), continuaremos até a página vir vazia ou todos serem filtrados.
+        // Mas para garantir:
+        if (fatosDaPagina.length === 0 || temPassado || (fatosValidos.length === 0 && pagina > 5)) {
+            temMais = false; // Paramos se achamos algo no passado, ou se não tem mais página
+        }
         pagina++;
         await wait(1000); // Nunca fazemos DDoS no VM Pay. Um segundo de respiro.
       }
