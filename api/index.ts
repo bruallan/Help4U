@@ -128,8 +128,13 @@ app.post('/api/sync-single-day', async (req, res) => {
     let hasMore = true;
 
     while (hasMore) {
-      const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${ACCESS_TOKEN}&start_date=${start_date}&end_date=${end_date}&per_page=200&page=${page}`;
-      const fetchRes = await fetch(url);
+      const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${ACCESS_TOKEN}&start_date=${start_date}&end_date=${end_date}&per_page=50&page=${page}`;
+      const fetchRes = await fetch(url, {
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
       if (!fetchRes.ok) throw new Error(`VMPay erro: ${fetchRes.status}`);
       const data = await fetchRes.json();
       
@@ -138,7 +143,7 @@ app.post('/api/sync-single-day', async (req, res) => {
         break;
       }
       allFacts.push(...data);
-      if (data.length < 200) hasMore = false;
+      if (data.length < 50) hasMore = false;
       page++;
     }
 

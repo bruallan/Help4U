@@ -79,125 +79,164 @@ async function runSync() {
 
   // 3. Executar Busca e Salvar
   let totalSaved = 0;
+  let isError = false;
+  let errorMsg = '';
+  let abortReason = '';
 
-  for (const dateStr of missingDates) {
-    const startOfDay = new Date(dateStr + 'T00:00:00Z');
-    const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
-    const start_date_iso = startOfDay.toISOString().split('.')[0] + 'Z';
-    const end_date_iso = endOfDay.toISOString().split('.')[0] + 'Z';
-
-    log(`>>> Iniciando sync para ${dateStr}`);
-    const allFacts: any[] = [];
-    let pagina = 1;
-    let temMais = true;
-    let fallbackDay = false;
-
-    while (temMais) {
-      const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${VMPAY_API_KEY}&start_date=${start_date_iso}&end_date=${end_date_iso}&per_page=200&page=${pagina}`;
-      let success = false;
-      let retries = 0;
-      let fatosDaPagina = [];
-
-      while (!success && retries < 5) {
-        try {
-          const res = await fetch(url);
-          if (!res.ok) throw new Error(`Status ${res.status}`);
-          fatosDaPagina = await res.json();
-          success = true;
-        } catch (err: any) {
-          retries++;
-          log(`Erro Pág ${pagina}: ${err.message}. Retentativa ${retries}/5 em breve...`);
-          await wait(2000 * retries); // Backoff progressivo (2s, 4s, 6s...)
-        }
-      }
-
-      if (!success) {
-         log(`AVISO CRÍTICO: Falha irreparável ao buscar página ${pagina} do dia ${dateStr} após 5 tentativas. Ignorando este dia para evitar travamento total e continuando.`);
-         fallbackDay = true;
-         break;
-      }
-
-      if (!fatosDaPagina || fatosDaPagina.length === 0) {
-         temMais = false;
-         break;
-      }
-
-      allFacts.push(...fatosDaPagina);
-      log(`Lida página ${pagina} do dia ${dateStr} com ${fatosDaPagina.length} registros.`);
+  try {
+    let consecutive5xx = 0;
+    
+    // Roda no máximo pelas datas faltantes
+    for (const dateStr of missingDates) {
+      if (abortReason) break;
       
-      if (fatosDaPagina.length < 200) temMais = false;
-      pagina++;
-      await wait(1000); // Nunca fazemos DDoS no VM Pay. Um segundo de respiro.
-    }
+      const startOfDay = new Date(dateStr + 'T00:00:00Z');
+      const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
+      const start_date_iso = startOfDay.toISOString().split('.')[0] + 'Z';
+      const end_date_iso = endOfDay.toISOString().split('.')[0] + 'Z';
 
-    if (fallbackDay) {
-       continue; // Go to next day
-    }
+      log(`>>> Iniciando sync para ${dateStr}`);
+      const allFacts: any[] = [];
+      let pagina = 1;
+      let temMais = true;
+      let fallbackDay = false;
 
-    if (allFacts.length > 0) {
-      log(`Formatando e enviando ${allFacts.length} registros para o Firebase (dia ${dateStr})...`);
+      while (temMais) {
+        if (abortReason) break;
+        
+        const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${VMPAY_API_KEY}&start_date=${start_date_iso}&end_date=${end_date_iso}&per_page=50&page=${pagina}`;
+        let success = false;
+        let retries = 0;
+        let fatosDaPagina = [];
 
-      const dbRows = allFacts.map(fato => {
-        let buyerId = fato.masked_card_number || (fato.order_id ? String(fato.order_id) : (fato.uuid || "Desconhecido"));
-        const categId = fato.good?.category_id;
-        const categoryName = categId && categoryDict[categId] ? categoryDict[categId] : "Sem Categoria";
+        // Reduzido para 3 tentativas por página, conforme solicitado
+        while (!success && retries < 3) {
+          try {
+            const res = await fetch(url, {
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+              }
+            });
+            if (!res.ok) {
+              if (res.status >= 500) consecutive5xx++;
+              else consecutive5xx = 0; // reset se não for erro de servidor
+              throw new Error(`Status ${res.status}`);
+            }
+            fatosDaPagina = await res.json();
+            success = true;
+            consecutive5xx = 0; // reset on success
+          } catch (err: any) {
+            retries++;
+            log(`Erro Pág ${pagina}: ${err.message}. Retentativa ${retries}/3 em breve...`);
+            
+            // Se tomarmos 3 erros de servidor 500+ seguidos (no total da execução), aborta TUDO
+            if (consecutive5xx >= 3) {
+               abortReason = `A API retornou erros de servidor (ex: 502) ${consecutive5xx} vezes seguidas. O VM Pay está fora do ar ou negando requisições. Abortando serviço.`;
+               log(`⚠️ ${abortReason}`);
+               break; // Sai do while das tentativas
+            }
+            await wait(2000 * retries);
+          }
+        }
 
-        return {
-          date: fato.occurred_at,
-          dayDate: fato.occurred_at, 
-          productName: fato.good?.name || "Produto Desconhecido",
-          buyerId,
-          salePrice: Number(fato.value) || 0,
-          costPrice: Number(fato.cost_price) || 0,
-          client: fato.place || "Desconhecido",
-          category: categoryName,
-          idCupom: String(fato.uuid || fato.order_id || fato.id) // ID Único exigido
-        };
-      });
+        if (abortReason) break; // Sai do while de páginas
 
-      // Firebase suporta lotes de até 500 escritas
-      const chunkSize = 400;
-      for (let i = 0; i < dbRows.length; i += chunkSize) {
-        const chunk = dbRows.slice(i, i + chunkSize);
-        const batch = writeBatch(db);
-        chunk.forEach(row => {
-          const docRef = doc(collection(db, "sales"), row.idCupom); 
-          batch.set(docRef, row);
-        });
-        await batch.commit();
-        log(`Gravados ${i + chunk.length} de ${dbRows.length} registros...`);
+        if (!success) {
+           log(`AVISO CRÍTICO: Falha irreparável ao buscar página ${pagina} do dia ${dateStr} após 3 tentativas. Ignorando este dia e continuando.`);
+           fallbackDay = true;
+           break;
+        }
+
+        if (!fatosDaPagina || fatosDaPagina.length === 0) {
+           temMais = false;
+           break;
+        }
+
+        allFacts.push(...fatosDaPagina);
+        log(`Lida página ${pagina} do dia ${dateStr} com ${fatosDaPagina.length} registros.`);
+        
+        if (fatosDaPagina.length < 50) temMais = false;
+        pagina++;
+        await wait(1000); // Nunca fazemos DDoS no VM Pay. Um segundo de respiro.
       }
-      totalSaved += dbRows.length;
-    } else {
-      log(`Nenhum faturamento registrado em ${dateStr}. Trocando de dia.`);
+
+      if (abortReason) break; // Sai do for de dias
+
+      if (fallbackDay) continue; // Go to next day
+
+      if (allFacts.length > 0) {
+        log(`Formatando e enviando ${allFacts.length} registros para o Firebase (dia ${dateStr})...`);
+
+        const dbRows = allFacts.map(fato => {
+          let buyerId = fato.masked_card_number || (fato.order_id ? String(fato.order_id) : (fato.uuid || "Desconhecido"));
+          const categId = fato.good?.category_id;
+          const categoryName = categId && categoryDict[categId] ? categoryDict[categId] : "Sem Categoria";
+
+          return {
+            date: fato.occurred_at,
+            dayDate: fato.occurred_at, 
+            productName: fato.good?.name || "Produto Desconhecido",
+            buyerId,
+            salePrice: Number(fato.value) || 0,
+            costPrice: Number(fato.cost_price) || 0,
+            client: fato.place || "Desconhecido",
+            category: categoryName,
+            idCupom: String(fato.uuid || fato.order_id || fato.id) // ID Único exigido
+          };
+        });
+
+        const chunkSize = 400;
+        for (let i = 0; i < dbRows.length; i += chunkSize) {
+          const chunk = dbRows.slice(i, i + chunkSize);
+          const batch = writeBatch(db);
+          chunk.forEach(row => {
+            const docRef = doc(collection(db, "sales"), row.idCupom); 
+            batch.set(docRef, row);
+          });
+          await batch.commit();
+          log(`Gravados ${i + chunk.length} de ${dbRows.length} registros...`);
+        }
+        totalSaved += dbRows.length;
+      } else {
+        log(`Nenhum faturamento registrado em ${dateStr}. Trocando de dia.`);
+      }
     }
-  }
+  } catch (e: any) {
+    isError = true;
+    errorMsg = e.message;
+    log(`CRITICAL ENGINE ERROR: ${e.message}`);
+  } finally {
+    log(`======= SINCRONIZAÇÃO CONCLUÍDA =======`);
+    if (abortReason) log(`Status Interrompido: ${abortReason}`);
+    log(`Total processado e salvo no banco desta vez: ${totalSaved} registros.`);
 
-  log(`======= SINCRONIZAÇÃO CONCLUÍDA =======`);
-  log(`Total processado e salvo no banco: ${totalSaved} registros.`);
+    // 4. Enviar email resumido MESMO SE der erro
+    if (EMAIL && PASSWORD) {
+      try {
+        const transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: { user: EMAIL, pass: PASSWORD }
+        });
 
-  // 4. Enviar email resumido se as credenciais existirem
-  if (EMAIL && PASSWORD) {
-    try {
-      const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: { user: EMAIL, pass: PASSWORD }
-      });
-
-      await transporter.sendMail({
-        from: EMAIL,
-        to: EMAIL,
-        subject: `[VMPay Sync] Relatório Executivo GitHub - ${missingDates.length} dias sincronizados`,
-        text: `A sincronização automática terminou com sucesso!\n\nDados Salvos: ${totalSaved}\nDias Processados:\n${missingDates.join('\n')}\n\n=== LOGS COMPLETO ===\n${logs.join('\n')}`
-      });
-      log('Email de relatório enviado com sucesso.');
-    } catch (e: any) {
-      log(`Não foi possível enviar e-mail: ${e.message}`);
+        const subjectStatus = abortReason || isError ? '⚠️ PARCIAL/FALHA' : '✅ SUCESSO';
+        await transporter.sendMail({
+          from: EMAIL,
+          to: EMAIL,
+          subject: `[VMPay Sync] Relatório GitHub - ${subjectStatus}`,
+          text: `A sincronização automática terminou.\n\nStatus: ${abortReason || (isError ? errorMsg : "Sucesso Total")}\nDados Salvos: ${totalSaved}\n\n=== LOGS COMPLETOS ===\n${logs.join('\n')}`
+        });
+        log('Email de relatório enviado com sucesso.');
+      } catch (e: any) {
+        log(`Não foi possível enviar e-mail: ${e.message}`);
+      }
+    }
+    
+    // Derruba a exec action com erro se foi abortado ou pegou excecao
+    if (abortReason || isError) {
+      process.exit(1); 
     }
   }
 }
 
-runSync().catch(err => {
-  log(`FALHA CRÍTICA NA ACTION: ${err.message}`);
-  process.exit(1);
-});
+runSync();
