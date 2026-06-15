@@ -130,7 +130,7 @@ app.post('/api/sync-single-day', async (req, res) => {
     const endDayTime = endOfDay.getTime();
 
     while (hasMore) {
-      const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${ACCESS_TOKEN}&start_date=${start_date}&page=${page}`;
+      const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${ACCESS_TOKEN}&start_date=${start_date}&end_date=${end_date}&per_page=5&page=${page}`;
       const fetchRes = await fetch(url, {
         headers: {
           'Accept': 'application/json',
