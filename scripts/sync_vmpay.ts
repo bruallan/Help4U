@@ -35,26 +35,27 @@ async function runSync() {
   // 1. Descobrir dias faltantes analisando o banco de dados
   const salesQuery = await getDocs(collection(db, "sales"));
   
-  // Default to 60 days ago if DB is completely empty.
-  // This prevents hitting VMPay with 6+ months of historical backfills which crash their server (502).
-  let maxDate = new Date();
-  maxDate.setUTCDate(maxDate.getUTCDate() - 60);
-  maxDate.setUTCHours(0, 0, 0, 0);
-  
+  // Guardar dias presentes
+  const diasPresentes = new Set<string>();
   salesQuery.forEach((docSnapshot) => {
-    const d = new Date(docSnapshot.data().dayDate);
-    if (d > maxDate) maxDate = d;
+    const data = docSnapshot.data();
+    if (data.dayDate) {
+      const dateStr = new Date(data.dayDate).toISOString().split('T')[0];
+      diasPresentes.add(dateStr);
+    }
   });
 
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
 
   const missingDates: string[] = [];
-  let currentDate = new Date(maxDate);
-  currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+  let currentDate = new Date('2026-01-01T00:00:00Z');
 
   while (currentDate < today) {
-    missingDates.push(currentDate.toISOString().split('T')[0]);
+    const dStr = currentDate.toISOString().split('T')[0];
+    if (!diasPresentes.has(dStr)) {
+      missingDates.push(dStr);
+    }
     currentDate.setUTCDate(currentDate.getUTCDate() + 1);
   }
 
