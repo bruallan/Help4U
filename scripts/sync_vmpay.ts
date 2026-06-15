@@ -106,7 +106,7 @@ async function runSync() {
       while (temMais) {
         if (abortReason) break;
         
-        const url = `${BASE_URL}/api/v1/cashless_transactions?access_token=${VMPAY_API_KEY}&start_date=${start_date_iso}&end_date=${end_date_iso}&per_page=50&page=${pagina}`;
+        const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${VMPAY_API_KEY}&start_date=${start_date_iso}&end_date=${end_date_iso}&per_page=5&page=${pagina}`;
         let success = false;
         let retries = 0;
         let fatosDaPagina = [];
@@ -172,7 +172,7 @@ async function runSync() {
         
         // Se a página retornou algo mas tudo estava fora do período, ou se veio menos que um default (ex: 50), continuaremos até a página vir vazia ou todos serem filtrados.
         // Mas para garantir:
-        if (fatosDaPagina.length < 50 || temPassado) {
+        if (fatosDaPagina.length < 5 || temPassado) {
             temMais = false; // Paramos se achamos algo no passado, ou se não tem mais página
         }
         pagina++;
