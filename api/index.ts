@@ -98,6 +98,76 @@ app.get('/api/proxy/scheduled_visit_checkpoints/:id', async (req, res) => {
   }
 });
 
+app.post('/api/sync-single-day', async (req, res) => {
+  try {
+    const { dateStr } = req.body;
+    if (!dateStr) return res.status(400).json({ error: "Missing dateStr" });
+
+    const ACCESS_TOKEN = process.env.VMPAY_API_KEY;
+    if (!ACCESS_TOKEN) return res.status(401).json({ error: "Missing VMPAY_API_KEY" });
+
+    const startOfDay = new Date(dateStr + 'T00:00:00Z');
+    const endOfDay = new Date(dateStr + 'T23:59:59.000Z');
+    const start_date = startOfDay.toISOString().split('.')[0] + 'Z';
+    const end_date = endOfDay.toISOString().split('.')[0] + 'Z';
+
+    // 1. Get Categories
+    let categoryDict: Record<number, string> = {};
+    try {
+      const catUrl = `${BASE_URL}/api/v1/categories?access_token=${ACCESS_TOKEN}&per_page=1000`;
+      const catRes = await fetch(catUrl);
+      if (catRes.ok) {
+        const cats = await catRes.json();
+        for (const c of cats) categoryDict[c.id] = c.name;
+      }
+    } catch(e) {}
+
+    // 2. Fetch all pages from VMPay
+    let allFacts: any[] = [];
+    let page = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+      const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${ACCESS_TOKEN}&start_date=${start_date}&end_date=${end_date}&per_page=200&page=${page}`;
+      const fetchRes = await fetch(url);
+      if (!fetchRes.ok) throw new Error(`VMPay erro: ${fetchRes.status}`);
+      const data = await fetchRes.json();
+      
+      if (!data || data.length === 0) {
+        hasMore = false;
+        break;
+      }
+      allFacts.push(...data);
+      if (data.length < 200) hasMore = false;
+      page++;
+    }
+
+    // 3. Format rows
+    const dbRows = allFacts.map(fato => {
+      let buyerId = fato.masked_card_number || (fato.order_id ? String(fato.order_id) : (fato.uuid || "Desconhecido"));
+      const categId = fato.good?.category_id;
+      const categoryName = categId && categoryDict[categId] ? categoryDict[categId] : "Sem Categoria";
+
+      return {
+        date: fato.occurred_at,
+        dayDate: fato.occurred_at, 
+        productName: fato.good?.name || "Produto Desconhecido",
+        buyerId,
+        salePrice: Number(fato.value) || 0,
+        costPrice: Number(fato.cost_price) || 0,
+        client: fato.place || "Desconhecido",
+        category: categoryName,
+        idCupom: String(fato.uuid || fato.order_id || fato.id)
+      };
+    });
+
+    res.json({ success: true, count: dbRows.length, data: dbRows });
+  } catch (e: any) {
+    console.error("VMPay Fetch error on date " + req.body.dateStr, e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // --- Remote Email Sender Endpoint ---
 
 app.post('/api/send-sync-email', async (req, res) => {

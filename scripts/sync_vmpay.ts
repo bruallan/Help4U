@@ -11,17 +11,10 @@ const BASE_URL = "https://vmpay.vertitecnologia.com.br";
 
 // Configuração Web do seu Firestore (que você já usa no app)
 // O GitHub Actions vai se conectar direto ao Firebase!
-const firebaseConfig = {
-  apiKey: process.env.VITE_FIREBASE_API_KEY || "AIzaSy_dummy_for_build",
-  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || "dummy",
-  projectId: process.env.VITE_FIREBASE_PROJECT_ID || "ai-studio-fca479a6-c910-450d-83ee-c2a244ee51e1",
-  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || "dummy",
-  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "dummy",
-  appId: process.env.VITE_FIREBASE_APP_ID || "dummy"
-};
+import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
 const logs: string[] = [];
 const log = (msg: string) => {
@@ -41,7 +34,12 @@ async function runSync() {
 
   // 1. Descobrir dias faltantes analisando o banco de dados
   const salesQuery = await getDocs(collection(db, "sales"));
-  let maxDate = new Date('2026-01-01T00:00:00Z');
+  
+  // Default to 60 days ago if DB is completely empty.
+  // This prevents hitting VMPay with 6+ months of historical backfills which crash their server (502).
+  let maxDate = new Date();
+  maxDate.setUTCDate(maxDate.getUTCDate() - 60);
+  maxDate.setUTCHours(0, 0, 0, 0);
   
   salesQuery.forEach((docSnapshot) => {
     const d = new Date(docSnapshot.data().dayDate);
@@ -92,6 +90,7 @@ async function runSync() {
     const allFacts: any[] = [];
     let pagina = 1;
     let temMais = true;
+    let fallbackDay = false;
 
     while (temMais) {
       const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${VMPAY_API_KEY}&start_date=${start_date_iso}&end_date=${end_date_iso}&per_page=200&page=${pagina}`;
@@ -113,7 +112,9 @@ async function runSync() {
       }
 
       if (!success) {
-         throw new Error(`Falha irreparável ao buscar página ${pagina} do dia ${dateStr} após 5 tentativas.`);
+         log(`AVISO CRÍTICO: Falha irreparável ao buscar página ${pagina} do dia ${dateStr} após 5 tentativas. Ignorando este dia para evitar travamento total e continuando.`);
+         fallbackDay = true;
+         break;
       }
 
       if (!fatosDaPagina || fatosDaPagina.length === 0) {
@@ -127,6 +128,10 @@ async function runSync() {
       if (fatosDaPagina.length < 200) temMais = false;
       pagina++;
       await wait(1000); // Nunca fazemos DDoS no VM Pay. Um segundo de respiro.
+    }
+
+    if (fallbackDay) {
+       continue; // Go to next day
     }
 
     if (allFacts.length > 0) {

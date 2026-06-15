@@ -29,13 +29,6 @@ jobs:
           VMPAY_API_KEY: ${{ secrets.VMPAY_API_KEY }}
           SMTP_EMAIL: ${{ secrets.SMTP_EMAIL }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          # Firebase Público (Não tem problema expor essas, só a API KEY da VMPay é confidencial):
-          VITE_FIREBASE_API_KEY: process.env.VITE_FIREBASE_API_KEY
-          VITE_FIREBASE_AUTH_DOMAIN: process.env.VITE_FIREBASE_AUTH_DOMAIN
-          VITE_FIREBASE_PROJECT_ID: ai-studio-fca479a6-c910-450d-83ee-c2a244ee51e1
-          VITE_FIREBASE_STORAGE_BUCKET: process.env.VITE_FIREBASE_STORAGE_BUCKET
-          VITE_FIREBASE_MESSAGING_SENDER_ID: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID
-          VITE_FIREBASE_APP_ID: process.env.VITE_FIREBASE_APP_ID
         run: |
           # Usamos npx tsx para rodar o arquivo TypeScript direto no terminal da Action!
           npx tsx scripts/sync_vmpay.ts

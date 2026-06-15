@@ -144,7 +144,9 @@ export default function App() {
 
       // Fetch existing dates in Firestore to determine what to sync
       const salesQuery = await getDocs(collection(db, "sales"));
-      let maxDate = new Date('2026-01-01T00:00:00Z');
+      let maxDate = new Date();
+      maxDate.setUTCDate(maxDate.getUTCDate() - 60);
+      maxDate.setUTCHours(0, 0, 0, 0);
       
       salesQuery.forEach(doc => {
         const d = new Date(doc.data().dayDate);
