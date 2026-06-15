@@ -104,7 +104,7 @@ async function runSync() {
       while (temMais) {
         if (abortReason) break;
         
-        const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${VMPAY_API_KEY}&start_date=${start_date_iso}&end_date=${end_date_iso}&per_page=50&page=${pagina}`;
+        const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${VMPAY_API_KEY}&start_date=${start_date_iso}&end_date=${end_date_iso}&per_page=5&page=${pagina}`;
         let success = false;
         let retries = 0;
         let fatosDaPagina = [];
@@ -156,7 +156,7 @@ async function runSync() {
         allFacts.push(...fatosDaPagina);
         log(`Lida página ${pagina} do dia ${dateStr} com ${fatosDaPagina.length} registros.`);
         
-        if (fatosDaPagina.length < 50) temMais = false;
+        if (fatosDaPagina.length < 5) temMais = false;
         pagina++;
         await wait(1000); // Nunca fazemos DDoS no VM Pay. Um segundo de respiro.
       }
