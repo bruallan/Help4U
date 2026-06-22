@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { UploadCloud, Search, FileSpreadsheet, AlertCircle, Loader2, LayoutDashboard, ShoppingCart, TrendingUp, Menu, X, ZoomIn, ZoomOut, Download, Wallet, Calendar, ChevronDown, Check, Dot, Activity, Sun, Moon, Package, ShoppingBag, Map as MapIcon, ShieldAlert } from 'lucide-react';
+import { UploadCloud, Search, FileSpreadsheet, AlertCircle, Loader2, LayoutDashboard, ShoppingCart, TrendingUp, Menu, X, ZoomIn, ZoomOut, Download, Wallet, Calendar, ChevronDown, Check, Dot, Activity, Sun, Moon, Package, ShoppingBag, Map as MapIcon, ShieldAlert, Building } from 'lucide-react';
 import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, ComposedChart, Bar, LineChart, Line, Legend, ReferenceLine } from 'recharts';
 
 import { cn, parseExcelDate, formatCurrency } from './utils';
@@ -20,6 +20,7 @@ import { AnaliseCesta } from './components/AnaliseCesta';
 import { MapaCalor } from './components/MapaCalor';
 import { GestaoValidade } from './components/GestaoValidade';
 import AuditoriaVMPay from './components/AuditoriaVMPay';
+import RepasseSindicos from './components/RepasseSindicos';
 import { auth, db } from './lib/firebase';
 import { doc, getDoc, setDoc, serverTimestamp, collection, getDocs, query } from 'firebase/firestore';
 
@@ -124,7 +125,7 @@ export default function App() {
     loadGlobalData();
   }, []);
 
-  const [activeTab, setActiveTab] = useState<'vendas' | 'indicadores' | 'lucro_fluxo' | 'dispersao_mercados' | 'dispersao_produtos' | 'desempenho_tipo' | 'plano_acao' | 'pos_estocagem' | 'analise_cesta' | 'mapa_calor' | 'desempenho_mensal' | 'gestao_validade' | 'auditoria'>('vendas');
+  const [activeTab, setActiveTab] = useState<'vendas' | 'indicadores' | 'lucro_fluxo' | 'dispersao_mercados' | 'dispersao_produtos' | 'desempenho_tipo' | 'plano_acao' | 'pos_estocagem' | 'analise_cesta' | 'mapa_calor' | 'desempenho_mensal' | 'gestao_validade' | 'auditoria' | 'repasse_sindicos'>('vendas');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<any>(null);
@@ -1344,6 +1345,19 @@ export default function App() {
             <ShieldAlert className="w-5 h-5 text-orange-500" />
             <span>Auditoria VMPay</span>
           </button>
+
+          <button
+            onClick={() => { setActiveTab('repasse_sindicos'); setIsSidebarOpen(false); }}
+            className={cn(
+              "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
+              activeTab === 'repasse_sindicos' 
+                ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400" 
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
+            )}
+          >
+            <Building className="w-5 h-5 text-emerald-500" />
+            <span>Repasse Síndicos</span>
+          </button>
         </nav>
 
         <div className="p-4 border-t border-slate-100 dark:border-slate-800 space-y-2">
@@ -1439,7 +1453,7 @@ export default function App() {
             
             <header>
               <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-                {activeTab === 'vendas' ? 'Dashboard de Vendas' : activeTab === 'lucro_fluxo' ? 'Lucro e Fluxo Diário' : activeTab === 'dispersao_mercados' ? 'Dispersão de Mercados' : activeTab === 'dispersao_produtos' ? 'Dispersão de Produtos' : activeTab === 'desempenho_tipo' ? 'Desempenho Tipo' : activeTab === 'desempenho_mensal' ? 'Desempenho Mensal' : activeTab === 'plano_acao' ? 'Plano de Ação' : activeTab === 'gestao_validade' ? 'Gestão de Validade' : activeTab === 'pos_estocagem' ? 'Pós-Estocagem' : activeTab === 'analise_cesta' ? 'Análise de Cesta' : activeTab === 'mapa_calor' ? 'Mapa de Calor' : activeTab === 'auditoria' ? 'Revisão e Auditoria API VMPay' : 'Indicadores de Risco'}
+                {activeTab === 'vendas' ? 'Dashboard de Vendas' : activeTab === 'lucro_fluxo' ? 'Lucro e Fluxo Diário' : activeTab === 'dispersao_mercados' ? 'Dispersão de Mercados' : activeTab === 'dispersao_produtos' ? 'Dispersão de Produtos' : activeTab === 'desempenho_tipo' ? 'Desempenho Tipo' : activeTab === 'desempenho_mensal' ? 'Desempenho Mensal' : activeTab === 'plano_acao' ? 'Plano de Ação' : activeTab === 'gestao_validade' ? 'Gestão de Validade' : activeTab === 'pos_estocagem' ? 'Pós-Estocagem' : activeTab === 'analise_cesta' ? 'Análise de Cesta' : activeTab === 'mapa_calor' ? 'Mapa de Calor' : activeTab === 'auditoria' ? 'Revisão e Auditoria API VMPay' : activeTab === 'repasse_sindicos' ? 'Relatório de Repasse para Síndicos' : 'Indicadores de Risco'}
               </h1>
               <p className="text-slate-500 dark:text-slate-400 mt-2">
                 {activeTab === 'vendas' 
@@ -1466,12 +1480,14 @@ export default function App() {
                   ? 'Desenhe as prateleiras e visualize as zonas mais "quentes" através de um mapa de calor.'
                   : activeTab === 'auditoria'
                   ? 'Compare as transações registradas no Firestore com a API oficial do VMPay para identificar e corrigir lacunas de vendas em massa.'
+                  : activeTab === 'repasse_sindicos'
+                  ? 'Acompanhe mês a mês o faturamento, cálculo de repasse, energia e relatórios de perdas/furtos de cada condomínio.'
                   : 'Veja alertas de risco para seus produtos.'}
               </p>
             </header>
 
             {/* Global Filters */}
-            {rawData && activeTab !== 'auditoria' && (
+            {rawData && activeTab !== 'auditoria' && activeTab !== 'repasse_sindicos' && (
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl">
                 <div className="flex items-center space-x-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 shadow-sm">
                   <Calendar className="w-4 h-4 text-slate-400" />
@@ -1505,7 +1521,7 @@ export default function App() {
             )}
 
             {/* Results Area */}
-            {stats.length > 0 && activeTab !== 'pos_estocagem' && activeTab !== 'analise_cesta' && activeTab !== 'mapa_calor' && activeTab !== 'auditoria' && (
+            {stats.length > 0 && activeTab !== 'pos_estocagem' && activeTab !== 'analise_cesta' && activeTab !== 'mapa_calor' && activeTab !== 'auditoria' && activeTab !== 'repasse_sindicos' && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -2418,6 +2434,9 @@ export default function App() {
                   window.location.reload();
                 }} 
               />
+            )}
+            {activeTab === 'repasse_sindicos' && rawData && (
+              <RepasseSindicos rawData={rawData} availableUnits={availableUnits} />
             )}
           </div>
         </div>

@@ -1,20 +1,15 @@
-import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, writeBatch } from 'firebase/firestore';
-import nodemailer from 'nodemailer';
 import * as dotenv from 'dotenv';
+import { db } from '../src/db/index.js';
+import { 
+  dimCategorias, dimProdutos, dimCodigosDeBarra, dimInstalacoes, 
+  dimPlanogramas, fatoVendas, fatoMovimentos 
+} from '../src/db/schema.js';
+import { sql } from 'drizzle-orm';
+
 dotenv.config();
 
 const VMPAY_API_KEY = process.env.VMPAY_API_KEY;
-const EMAIL = process.env.SMTP_EMAIL;
-const PASSWORD = process.env.SMTP_PASSWORD;
 const BASE_URL = "https://vmpay.vertitecnologia.com.br";
-
-// Configuração Web do seu Firestore (que você já usa no app)
-// O GitHub Actions vai se conectar direto ao Firebase!
-import firebaseConfig from '../firebase-applet-config.json';
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
 const logs: string[] = [];
 const log = (msg: string) => {
@@ -25,242 +20,341 @@ const log = (msg: string) => {
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+async function fetchApi(endpoint: string, params: Record<string, any> = {}) {
+  const url = new URL(`${BASE_URL}/api/v1${endpoint}`);
+  url.searchParams.append('access_token', VMPAY_API_KEY as string);
+  
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) {
+      url.searchParams.append(key, String(value));
+    }
+  }
+
+  let retries = 0;
+  while (retries < 3) {
+    try {
+      const res = await fetch(url.toString(), {
+        headers: {
+          'Accept': 'application/json',
+        }
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP Error ${res.status} on ${endpoint}`);
+      }
+      return await res.json();
+    } catch (e: any) {
+      retries++;
+      log(`Error fetching ${endpoint}: ${e.message}. Retry ${retries}/3`);
+      await wait(2000 * retries);
+    }
+  }
+  throw new Error(`Failed to fetch ${endpoint} after 3 retries.`);
+}
+
+async function syncCategories() {
+  log("Syncing Categorias...");
+  const categories = await fetchApi('/categories', { per_page: 1000 });
+  const rows = categories.map((c: any) => ({
+    id: c.id,
+    nome: c.name,
+  }));
+  
+  if (rows.length > 0) {
+    await db.insert(dimCategorias)
+      .values(rows)
+      .onConflictDoUpdate({
+        target: dimCategorias.id,
+        set: { nome: sql`EXCLUDED.nome` },
+      });
+  }
+  log(`Synced ${rows.length} categorias.`);
+}
+
+async function syncProducts() {
+  log("Syncing Produtos...");
+  // Paginated fetching for products
+  let page = 1;
+  let hasMore = true;
+  let count = 0;
+
+  while(hasMore) {
+    const products = await fetchApi('/products', { page, per_page: 1000 });
+    if (!products || products.length === 0) break;
+    
+    const prodRows = [];
+    const cbRows = [];
+    
+    for (const p of products) {
+      prodRows.push({
+        id: p.id,
+        produto: p.name,
+        categoria: null, // We'll rely on joining with dimCategorias later if needed, or update if provided directly
+        categoriaId: p.category_id,
+        codigoBarras: p.barcode,
+        precoCusto: p.cost_price,
+        precoPadrao: p.default_price,
+        totalVendido: p.vendible_balance,
+        ncmCode: p.ncm_code,
+        cestCode: p.cest_code,
+        taxOperationId: p.tax_operation?.id,
+        taxOperationName: p.tax_operation?.name,
+        quantidadeEstoque: p.inventories?.[0]?.total_quantity || 0,
+      });
+
+      if (p.barcode) {
+        cbRows.push({
+          idProduto: p.id,
+          codigoPrincipal: p.barcode,
+          codigoAdicional: p.barcode,
+        });
+      }
+
+      if (Array.isArray(p.additional_barcodes)) {
+        for (const code of p.additional_barcodes) {
+          cbRows.push({
+            idProduto: p.id,
+            codigoPrincipal: p.barcode,
+            codigoAdicional: code,
+          });
+        }
+      }
+    }
+
+    if (prodRows.length > 0) {
+      await db.insert(dimProdutos)
+        .values(prodRows)
+        .onConflictDoUpdate({
+          target: dimProdutos.id,
+          set: {
+            produto: sql`EXCLUDED.produto`,
+            categoriaId: sql`EXCLUDED.categoria_id`,
+            codigoBarras: sql`EXCLUDED.codigo_barras`,
+            precoCusto: sql`EXCLUDED.preco_custo`,
+            precoPadrao: sql`EXCLUDED.preco_padrao`,
+            totalVendido: sql`EXCLUDED.total_vendido`,
+            ncmCode: sql`EXCLUDED.ncm_code`,
+            cestCode: sql`EXCLUDED.cest_code`,
+            taxOperationId: sql`EXCLUDED.tax_operation_id`,
+            taxOperationName: sql`EXCLUDED.tax_operation_name`,
+            quantidadeEstoque: sql`EXCLUDED.quantidade_estoque`,
+          }
+        });
+    }
+
+    // We can just wipe bar codes for the synced products and reinsert to avoid complex composite key upserts
+    if (cbRows.length > 0) {
+       for(const row of cbRows) {
+         try {
+           await db.insert(dimCodigosDeBarra).values(row);
+         } catch(e) {
+           // ignore duplicate additions if unique constraints exist.
+         }
+       }
+    }
+
+    count += products.length;
+    page++;
+    await wait(500); // rate limiting
+  }
+  log(`Synced ${count} produtos.`);
+}
+
+async function syncMachinesAndInstallations() {
+  log("Syncing Máquinas e Instalações...");
+  let page = 1;
+  let hasMore = true;
+  let instCount = 0;
+  let planCount = 0;
+
+  while(hasMore) {
+    const machines = await fetchApi('/machines', { page, per_page: 100 });
+    if (!machines || machines.length === 0) break;
+    
+    for (const m of machines) {
+      if (m.installation?.id) {
+        // Sync installation basic info
+        await db.insert(dimInstalacoes)
+          .values({
+            instalacaoId: m.installation.id,
+            instalacao: m.installation.place,
+            maquinaId: m.id,
+          })
+          .onConflictDoUpdate({
+            target: dimInstalacoes.instalacaoId,
+            set: { instalacao: sql`EXCLUDED.instalacao` },
+          });
+        instCount++;
+
+        // Fetch detailed installation to get Planograms
+        try {
+          const detail = await fetchApi(`/machines/${m.id}/installations/${m.installation.id}`);
+          if (detail.current_planogram && detail.current_planogram.items) {
+            const planRows = detail.current_planogram.items.map((item: any) => ({
+              planItemId: item.id,
+              instalacaoId: detail.id,
+              instalacao: detail.place,
+              planId: detail.current_planogram.id,
+              idProduto: item.good?.id,
+              produto: item.good?.name,
+              saldo: item.current_balance,
+              nivelPar: item.par_level,
+              nivelAlerta: item.alert_level,
+              usarNivelMinimo: item.use_minimum_level,
+              nivelMinimo: item.minimum_level,
+              preco: item.desired_price,
+              usaPrecoPadrao: item.use_default_price_product,
+              precoPromocao: item.promotional_price,
+              status: item.status,
+              validade: item.expiration_date ? new Date(item.expiration_date) : null,
+              alternativoApenas: item.alternative_only,
+            }));
+
+            if (planRows.length > 0) {
+              await db.insert(dimPlanogramas)
+                .values(planRows)
+                .onConflictDoUpdate({
+                  target: dimPlanogramas.planItemId,
+                  set: {
+                    saldo: sql`EXCLUDED.saldo`,
+                    preco: sql`EXCLUDED.preco`,
+                    precoPromocao: sql`EXCLUDED.preco_promocao`,
+                    status: sql`EXCLUDED.status`,
+                  }
+                });
+              planCount += planRows.length;
+            }
+          }
+        } catch(e) {
+          log(`Warning: Failed to fetch installation detail for ${m.installation.id}`);
+        }
+        await wait(200); // rate logic
+      }
+    }
+    
+    page++;
+    await wait(1000);
+  }
+  log(`Synced ${instCount} instalações e ${planCount} itens de planograma.`);
+}
+
+async function syncCashlessFacts() {
+  log("Syncing Cashless Facts (últimos 15 dias)...");
+  
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - 15);
+  
+  let page = 1;
+  let hasMore = true;
+  let count = 0;
+
+  while(hasMore) {
+    const facts = await fetchApi('/cashless_facts', { 
+      start_date: start.toISOString().split('.')[0] + 'Z',
+      end_date: end.toISOString().split('.')[0] + 'Z',
+      page, 
+      per_page: 1000 
+    });
+    
+    if (!facts || facts.length === 0) break;
+    
+    const rows = facts.map((f: any) => ({
+      vendaId: String(f.id),
+      dataVenda: new Date(f.occurred_at),
+      produtoId: f.good?.id,
+      produto: f.good?.name,
+      categoriaId: f.good?.category_id,
+      instalacao: f.place,
+      cardNumber: f.masked_card_number,
+      statusVenda: f.status,
+      tipoCartao: f.eft_card_type?.name,
+      tipoPagamento: f.kind,
+      tipoPix: f.payment_authorizer?.name,
+      valor: f.value,
+      precoCusto: f.cost_price,
+      quantidade: f.quantity,
+    }));
+
+    if (rows.length > 0) {
+      await db.insert(fatoVendas)
+        .values(rows)
+        .onConflictDoUpdate({
+          target: fatoVendas.vendaId,
+          set: { statusVenda: sql`EXCLUDED.status_venda` }
+        });
+      count += rows.length;
+    }
+    page++;
+    await wait(500);
+  }
+  log(`Synced ${count} vendas.`);
+}
+
+async function syncInventoryMovements() {
+  log("Syncing Movimentos (últimos 15 dias)...");
+  
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - 15);
+  
+  let page = 1;
+  let hasMore = true;
+  let count = 0;
+
+  while(hasMore) {
+    const movs = await fetchApi('/distribution_center_inventories', { 
+      occurred_at_start: start.toISOString().split('.')[0] + 'Z',
+      occurred_at_end: end.toISOString().split('.')[0] + 'Z',
+      page, 
+      per_page: 1000 
+    });
+    
+    if (!movs || movs.length === 0) break;
+    
+    const rows = movs.map((m: any) => ({
+      movimentoId: String(m.id),
+      movimentoData: new Date(m.occurred_at),
+      saldoAnterior: m.balance_before,
+      quantidade: m.value,
+      saldoFinal: m.balance_after,
+      produtoId: m.good?.id,
+      produto: m.good?.display_name,
+      fornecedor: m.provider?.name,
+      operacaoTipo: m.nature_operation,
+      precoCusto: m.cost_price,
+    }));
+
+    if (rows.length > 0) {
+      await db.insert(fatoMovimentos)
+        .values(rows)
+        .onConflictDoUpdate({
+          target: fatoMovimentos.movimentoId,
+          set: { saldoFinal: sql`EXCLUDED.saldo_final` }
+        });
+      count += rows.length;
+    }
+    page++;
+    await wait(500);
+  }
+  log(`Synced ${count} movimentos.`);
+}
+
 async function runSync() {
   if (!VMPAY_API_KEY) {
-    throw new Error('VMPAY_API_KEY não está configurada nos Secrets do GitHub!');
+    throw new Error('VMPAY_API_KEY env missing');
   }
-
-  log('Iniciando rotina pesada de Sincronização via GitHub Actions...');
-
-  // 1. Descobrir dias faltantes analisando o banco de dados
-  const salesQuery = await getDocs(collection(db, "sales"));
-  
-  // Guardar dias presentes
-  const diasPresentes = new Set<string>();
-  salesQuery.forEach((docSnapshot) => {
-    const data = docSnapshot.data();
-    if (data.dayDate) {
-      const dateStr = new Date(data.dayDate).toISOString().split('T')[0];
-      diasPresentes.add(dateStr);
-    }
-  });
-
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-
-  const missingDates: string[] = [];
-  let currentDate = new Date('2026-01-01T00:00:00Z');
-
-  while (currentDate < today) {
-    const dStr = currentDate.toISOString().split('T')[0];
-    
-    // Calculate difference in days to check if it represents a recent day
-    const diffMs = today.getTime() - currentDate.getTime();
-    const diffDays = diffMs / (1000 * 60 * 60 * 24);
-    const isRecent = diffDays <= 15;
-
-    if (!diasPresentes.has(dStr) || isRecent) {
-      missingDates.push(dStr);
-    }
-    currentDate.setUTCDate(currentDate.getUTCDate() + 1);
-  }
-
-  if (missingDates.length === 0) {
-    log('Nenhum dia para sincronizar. Banco de dados já está atualizado!');
-    return;
-  }
-
-  log(`Encontrados ${missingDates.length} dias para sincronizar.`);
-
-  // 2. Pré-carregar Categorias do VM Pay
-  log('Carregando categorias...');
-  const catRes = await fetch(`${BASE_URL}/api/v1/categories?access_token=${VMPAY_API_KEY}&per_page=1000`);
-  let categoryDict: Record<number, string> = {};
-  if (catRes.ok) {
-    const cats = await catRes.json();
-    for (const c of cats) categoryDict[c.id] = c.name;
-    log(`Carregadas ${cats.length} categorias.`)
-  } else {
-    log(`AVISO: Falha ao carregar categorias (HTTP ${catRes.status})`);
-  }
-
-  // 3. Executar Busca e Salvar
-  let totalSaved = 0;
-  let isError = false;
-  let errorMsg = '';
-  let abortReason = '';
 
   try {
-    let consecutive5xx = 0;
-    let pagesProcessed = 0;
-    
-    // Roda no máximo pelas datas faltantes
-    for (const dateStr of missingDates) {
-      if (abortReason) break;
-      
-      const startOfDay = new Date(dateStr + 'T00:00:00Z');
-      const endOfDay = new Date(dateStr + 'T23:59:59.999Z');
-      const start_date_iso = startOfDay.toISOString().split('.')[0] + 'Z';
-      const end_date_iso = endOfDay.toISOString().split('.')[0] + 'Z';
-
-      log(`>>> Iniciando sync para ${dateStr}`);
-      const allFacts: any[] = [];
-      let pagina = 1;
-      let temMais = true;
-      let fallbackDay = false;
-
-      while (temMais) {
-        if (abortReason) break;
-        
-        const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${VMPAY_API_KEY}&start_date=${start_date_iso}&end_date=${end_date_iso}&per_page=100&page=${pagina}`;
-        let success = false;
-        let retries = 0;
-        let fatosDaPagina = [];
-
-        // Reduzido para 3 tentativas por página, conforme solicitado
-        while (!success && retries < 3) {
-          try {
-            const res = await fetch(url, {
-              headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-              }
-            });
-            if (!res.ok) {
-              if (res.status >= 500) consecutive5xx++;
-              else consecutive5xx = 0; // reset se não for erro de servidor
-              throw new Error(`Status ${res.status}`);
-            }
-            fatosDaPagina = await res.json();
-            success = true;
-            consecutive5xx = 0; // reset on success
-          } catch (err: any) {
-            retries++;
-            log(`Erro Pág ${pagina}: ${err.message}. Retentativa ${retries}/3 em breve...`);
-            
-            // Se tomarmos 3 erros de servidor 500+ seguidos (no total da execução), aborta TUDO
-            if (consecutive5xx >= 3) {
-               abortReason = `A API retornou erros de servidor (ex: 502) ${consecutive5xx} vezes seguidas. O VM Pay está fora do ar ou negando requisições. Abortando serviço.`;
-               log(`⚠️ ${abortReason}`);
-               break; // Sai do while das tentativas
-            }
-            await wait(2000 * retries);
-          }
-        }
-
-        if (abortReason) break; // Sai do while de páginas
-
-        if (!success) {
-           log(`AVISO CRÍTICO: Falha irreparável ao buscar página ${pagina} do dia ${dateStr} após 3 tentativas. Ignorando este dia e continuando.`);
-           fallbackDay = true;
-           break;
-        }
-
-        if (!fatosDaPagina || fatosDaPagina.length === 0) {
-           temMais = false;
-           break;
-        }
-
-        // Removemos transações futuras deste dia, já que não temos end_date na URL
-        const endDayTime = endOfDay.getTime();
-        const startDayTime = startOfDay.getTime();
-
-        const fatosValidos = fatosDaPagina.filter((f: any) => {
-          const t = new Date(f.occurred_at).getTime();
-          return t >= startDayTime && t <= endDayTime;
-        });
-
-        // Verificamos se há transações ANTERIORES ao nosso dia (indicativo de que fomos longe demais descendo)
-        const temPassado = fatosDaPagina.some((f: any) => new Date(f.occurred_at).getTime() < startDayTime);
-
-        allFacts.push(...fatosValidos);
-        log(`Lida página ${pagina} do dia ${dateStr} com ${fatosValidos.length} registros no período (de ${fatosDaPagina.length} totais).`);
-        
-        // Se a página retornou algo mas tudo estava fora do período, ou se veio menos que um default (ex: 50), continuaremos até a página vir vazia ou todos serem filtrados.
-        // Mas para garantir:
-        if (fatosDaPagina.length < 100 || temPassado) {
-            temMais = false; // Paramos se achamos algo no passado, ou se não tem mais página
-        }
-        pagina++;
-        await wait(2000); // 2 segundos p/ n ser bloqueado
-      }
-
-
-      if (abortReason) break; // Sai do for de dias
-
-      if (fallbackDay) continue; // Go to next day
-
-      if (allFacts.length > 0) {
-        log(`Formatando e enviando ${allFacts.length} registros para o Firebase (dia ${dateStr})...`);
-
-        const dbRows = allFacts.map(fato => {
-          let buyerId = fato.masked_card_number || (fato.order_id ? String(fato.order_id) : (fato.uuid || "Desconhecido"));
-          const categId = fato.good?.category_id;
-          const categoryName = categId && categoryDict[categId] ? categoryDict[categId] : "Sem Categoria";
-
-          return {
-            date: fato.occurred_at,
-            dayDate: fato.occurred_at, 
-            productName: fato.good?.name || "Produto Desconhecido",
-            buyerId,
-            salePrice: Number(fato.value) || 0,
-            costPrice: Number(fato.cost_price) || 0,
-            client: fato.place || "Desconhecido",
-            category: categoryName,
-            idCupom: String(fato.uuid || fato.order_id || fato.id) // ID Único exigido
-          };
-        });
-
-        const chunkSize = 400;
-        for (let i = 0; i < dbRows.length; i += chunkSize) {
-          const chunk = dbRows.slice(i, i + chunkSize);
-          const batch = writeBatch(db);
-          chunk.forEach(row => {
-            const docRef = doc(collection(db, "sales"), row.idCupom); 
-            batch.set(docRef, row);
-          });
-          await batch.commit();
-          log(`Gravados ${i + chunk.length} de ${dbRows.length} registros...`);
-        }
-        totalSaved += dbRows.length;
-      } else {
-        log(`Nenhum faturamento registrado em ${dateStr}. Trocando de dia.`);
-      }
-    }
-  } catch (e: any) {
-    isError = true;
-    errorMsg = e.message;
-    log(`CRITICAL ENGINE ERROR: ${e.message}`);
-  } finally {
-    log(`======= SINCRONIZAÇÃO CONCLUÍDA =======`);
-    if (abortReason) log(`Status Interrompido: ${abortReason}`);
-    log(`Total processado e salvo no banco desta vez: ${totalSaved} registros.`);
-
-    // 4. Enviar email resumido MESMO SE der erro
-    if (EMAIL && PASSWORD) {
-      try {
-        const transporter = nodemailer.createTransport({
-          service: 'gmail',
-          auth: { user: EMAIL, pass: PASSWORD }
-        });
-
-        const subjectStatus = abortReason || isError ? '⚠️ PARCIAL/FALHA' : '✅ SUCESSO';
-        await transporter.sendMail({
-          from: EMAIL,
-          to: EMAIL,
-          subject: `[VMPay Sync] Relatório GitHub - ${subjectStatus}`,
-          text: `A sincronização automática terminou.\n\nStatus: ${abortReason || (isError ? errorMsg : "Sucesso Total")}\nDados Salvos: ${totalSaved}\n\n=== LOGS COMPLETOS ===\n${logs.join('\n')}`
-        });
-        log('Email de relatório enviado com sucesso.');
-      } catch (e: any) {
-        log(`Não foi possível enviar e-mail: ${e.message}`);
-      }
-    }
-    
-    // Derruba a exec action com erro se foi abortado ou pegou excecao
-    if (abortReason || isError) {
-      process.exit(1); 
-    }
+    await syncCategories();
+    await syncProducts();
+    await syncMachinesAndInstallations();
+    await syncCashlessFacts();
+    await syncInventoryMovements();
+    log("======= SINCRONIZAÇÃO COMPLETA =======");
+    process.exit(0);
+  } catch(e: any) {
+     log(`PROCESS FAILED: ${e.message}`);
+     process.exit(1);
   }
 }
 

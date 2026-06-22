@@ -1,8 +1,8 @@
-// src/db/index.ts
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from './schema.ts';
 import * as dotenv from 'dotenv';
+
 dotenv.config();
 
 export const createPool = () => {
@@ -12,7 +12,6 @@ export const createPool = () => {
     password: process.env.SQL_PASSWORD,
     database: process.env.SQL_DB_NAME,
     connectionTimeoutMillis: 15000,
-    ssl: process.env.NODE_ENV === 'production' || process.env.VERCEL ? { rejectUnauthorized: false } : false,
   });
 };
 

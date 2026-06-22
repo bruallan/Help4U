@@ -11,6 +11,47 @@ app.use(cors());
 
 const BASE_URL = "https://vmpay.vertitecnologia.com.br";
 
+// Reusable robust fetch wrapper with retries and exponential backoff
+async function fetchWithRetry(url: string, options: RequestInit = {}, retries = 4, delayMs = 1200): Promise<Response> {
+  let lastError: any = null;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const signal = controller.signal;
+      
+      // Set a 35 seconds timeout for fetching page
+      const timeoutId = setTimeout(() => controller.abort(), 35000);
+      
+      const res = await fetch(url, { ...options, signal });
+      clearTimeout(timeoutId);
+
+      if (res.status === 429) {
+        const backoff = delayMs * Math.pow(2.2, attempt);
+        console.warn(`[VMPay API] Rate limited (429) on attempt ${attempt}/${retries}. Retrying in ${Math.round(backoff)}ms...`);
+        await new Promise(r => setTimeout(r, backoff));
+        continue;
+      }
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+      return res;
+    } catch (err: any) {
+      lastError = err;
+      const isLastAttempt = attempt === retries;
+      if (isLastAttempt) {
+        break;
+      }
+      
+      // Calculate backoff
+      const backoff = delayMs * Math.pow(1.8, attempt);
+      console.warn(`[VMPay API] Fetch failed on attempt ${attempt}/${retries} for url: ${url.split('?')[0]}. Error: ${err.message || err}. Retrying in ${Math.round(backoff)}ms...`);
+      await new Promise(r => setTimeout(r, backoff));
+    }
+  }
+  throw lastError || new Error("Fetch failed after maximum retries");
+}
+
 // --- Proxy Endpoints to avoid CORS limits and hide VMPAY API KEY ---
 
 app.get('/api/proxy/cashless_facts', async (req, res) => {
@@ -21,8 +62,7 @@ app.get('/api/proxy/cashless_facts', async (req, res) => {
     const { start_date, end_date, page, per_page } = req.query;
     const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${ACCESS_TOKEN}&start_date=${start_date}&end_date=${end_date}&per_page=${per_page || 100}&page=${page || 1}`;
     
-    const fetchRes = await fetch(url);
-    if (!fetchRes.ok) throw new Error(`VMPay erro: ${fetchRes.status}`);
+    const fetchRes = await fetchWithRetry(url);
     const data = await fetchRes.json();
     res.json(data);
   } catch (e: any) {
@@ -35,7 +75,7 @@ app.get('/api/proxy/categories', async (req, res) => {
     const ACCESS_TOKEN = process.env.VMPAY_API_KEY;
     if (!ACCESS_TOKEN) return res.status(401).json({ error: "Missing VMPAY_API_KEY" });
     const url = `${BASE_URL}/api/v1/categories?access_token=${ACCESS_TOKEN}&per_page=1000`;
-    const fetchRes = await fetch(url);
+    const fetchRes = await fetchWithRetry(url);
     const data = await fetchRes.json();
     res.json(data);
   } catch (e: any) {
@@ -49,7 +89,7 @@ app.get('/api/proxy/installations', async (req, res) => {
     if (!ACCESS_TOKEN) return res.status(401).json({ error: "Missing VMPAY_API_KEY" });
     const { page } = req.query;
     const url = `${BASE_URL}/api/v1/installations?access_token=${ACCESS_TOKEN}&per_page=100&page=${page || 1}`;
-    const fetchRes = await fetch(url);
+    const fetchRes = await fetchWithRetry(url);
     const data = await fetchRes.json();
     res.json(data);
   } catch (e: any) {
@@ -63,7 +103,7 @@ app.get('/api/proxy/scheduled_visits', async (req, res) => {
     if (!ACCESS_TOKEN) return res.status(401).json({ error: "Missing VMPAY_API_KEY" });
     const { start_date, end_date, page } = req.query;
     const url = `${BASE_URL}/api/v1/scheduled_visits?access_token=${ACCESS_TOKEN}&start_date=${start_date}&end_date=${end_date}&per_page=100&page=${page || 1}`;
-    const fetchRes = await fetch(url);
+    const fetchRes = await fetchWithRetry(url);
     const data = await fetchRes.json();
     res.json(data);
   } catch (e: any) {
@@ -77,7 +117,7 @@ app.get('/api/proxy/goods', async (req, res) => {
     if (!ACCESS_TOKEN) return res.status(401).json({ error: "Missing VMPAY_API_KEY" });
     const { page } = req.query;
     const url = `${BASE_URL}/api/v1/goods?access_token=${ACCESS_TOKEN}&per_page=100&page=${page || 1}`;
-    const fetchRes = await fetch(url);
+    const fetchRes = await fetchWithRetry(url);
     const data = await fetchRes.json();
     res.json(data);
   } catch (e: any) {
@@ -90,7 +130,7 @@ app.get('/api/proxy/scheduled_visit_checkpoints/:id', async (req, res) => {
     const ACCESS_TOKEN = process.env.VMPAY_API_KEY;
     if (!ACCESS_TOKEN) return res.status(401).json({ error: "Missing VMPAY_API_KEY" });
     const url = `${BASE_URL}/api/v1/scheduled_visit_checkpoints/${req.params.id}?access_token=${ACCESS_TOKEN}`;
-    const fetchRes = await fetch(url);
+    const fetchRes = await fetchWithRetry(url);
     const data = await fetchRes.json();
     res.json(data);
   } catch (e: any) {
@@ -115,7 +155,7 @@ app.post('/api/sync-single-day', async (req, res) => {
     let categoryDict: Record<number, string> = {};
     try {
       const catUrl = `${BASE_URL}/api/v1/categories?access_token=${ACCESS_TOKEN}&per_page=1000`;
-      const catRes = await fetch(catUrl);
+      const catRes = await fetchWithRetry(catUrl, {}, 3, 1000);
       if (catRes.ok) {
         const cats = await catRes.json();
         for (const c of cats) categoryDict[c.id] = c.name;
@@ -131,13 +171,13 @@ app.post('/api/sync-single-day', async (req, res) => {
 
     while (hasMore) {
       const url = `${BASE_URL}/api/v1/cashless_facts?access_token=${ACCESS_TOKEN}&start_date=${start_date}&end_date=${end_date}&per_page=100&page=${page}`;
-      const fetchRes = await fetch(url, {
+      const fetchRes = await fetchWithRetry(url, {
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json'
         }
-      });
-      if (!fetchRes.ok) throw new Error(`VMPay erro: ${fetchRes.status}`);
+      }, 4, 1500); // 4 retries, starting with 1.5s delay
+      
       const data = await fetchRes.json();
       
       if (!data || data.length === 0) {
@@ -153,6 +193,9 @@ app.post('/api/sync-single-day', async (req, res) => {
       }
       
       page++;
+      
+      // Delay between pages to prevent rate limits
+      await new Promise(r => setTimeout(r, 150));
     }
 
     // 3. Format rows
