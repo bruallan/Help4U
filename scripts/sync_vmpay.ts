@@ -180,189 +180,222 @@ async function syncMachinesAndInstallations() {
   let planCount = 0;
 
   while(hasMore) {
+    log(`Fetching machines page ${page}...`);
     const machines = await fetchApi('/machines', { page, per_page: 100 });
     if (!machines || machines.length === 0) break;
     
-    for (const m of machines) {
-      if (m.installation?.id) {
-        // Sync installation basic info
-        await db.insert(dimInstalacoes)
-          .values({
-            instalacaoId: m.installation.id,
-            instalacao: m.installation.place != null ? String(m.installation.place) : "Desconhecida",
-            maquinaId: m.id,
-          })
-          .onConflictDoUpdate({
-            target: dimInstalacoes.instalacaoId,
-            set: { instalacao: sql`EXCLUDED.instalacao` },
-            where: sql`"dim_instalacoes".instalacao IS DISTINCT FROM EXCLUDED.instalacao`,
-          });
-        instCount++;
+    // Process in batches of 10 to speed up
+    const chunkSize = 10;
+    for (let i = 0; i < machines.length; i += chunkSize) {
+      const chunk = machines.slice(i, i + chunkSize);
+      
+      await Promise.all(chunk.map(async (m: any) => {
+        if (m.installation?.id) {
+          // Sync installation basic info
+          await db.insert(dimInstalacoes)
+            .values({
+              instalacaoId: m.installation.id,
+              instalacao: m.installation.place != null ? String(m.installation.place) : "Desconhecida",
+              maquinaId: m.id,
+            })
+            .onConflictDoUpdate({
+              target: dimInstalacoes.instalacaoId,
+              set: { instalacao: sql`EXCLUDED.instalacao` },
+              where: sql`"dim_instalacoes".instalacao IS DISTINCT FROM EXCLUDED.instalacao`,
+            });
+          instCount++;
 
-        // Fetch detailed installation to get Planograms
-        try {
-          const detail = await fetchApi(`/machines/${m.id}/installations/${m.installation.id}`);
-          if (detail.current_planogram && detail.current_planogram.items) {
-            const planRows = detail.current_planogram.items.map((item: any) => ({
-              planItemId: item.id,
-              instalacaoId: detail.id,
-              instalacao: detail.place != null ? String(detail.place) : "Desconhecida",
-              planId: detail.current_planogram.id,
-              idProduto: item.good?.id,
-              produto: item.good?.name != null ? String(item.good?.name) : null,
-              saldo: item.current_balance,
-              nivelPar: item.par_level,
-              nivelAlerta: item.alert_level,
-              usarNivelMinimo: item.use_minimum_level,
-              nivelMinimo: item.minimum_level,
-              preco: item.desired_price,
-              usaPrecoPadrao: item.use_default_price_product,
-              precoPromocao: item.promotional_price,
-              status: item.status != null ? String(item.status) : null,
-              validade: item.expiration_date ? new Date(item.expiration_date) : null,
-              alternativoApenas: item.alternative_only,
-            }));
+          // Fetch detailed installation to get Planograms
+          try {
+            const detail = await fetchApi(`/machines/${m.id}/installations/${m.installation.id}`);
+            if (detail.current_planogram && detail.current_planogram.items) {
+              const planRows = detail.current_planogram.items.map((item: any) => ({
+                planItemId: item.id,
+                instalacaoId: detail.id,
+                instalacao: detail.place != null ? String(detail.place) : "Desconhecida",
+                planId: detail.current_planogram.id,
+                idProduto: item.good?.id,
+                produto: item.good?.name != null ? String(item.good?.name) : null,
+                saldo: item.current_balance,
+                nivelPar: item.par_level,
+                nivelAlerta: item.alert_level,
+                usarNivelMinimo: item.use_minimum_level,
+                nivelMinimo: item.minimum_level,
+                preco: item.desired_price,
+                usaPrecoPadrao: item.use_default_price_product,
+                precoPromocao: item.promotional_price,
+                status: item.status != null ? String(item.status) : null,
+                validade: item.expiration_date ? new Date(item.expiration_date) : null,
+                alternativoApenas: item.alternative_only,
+              }));
 
-            const uniquePlanRows = Array.from(new Map(planRows.map((r: any) => [r.planItemId, r])).values());
+              const uniquePlanRows = Array.from(new Map(planRows.map((r: any) => [r.planItemId, r])).values());
 
-            if (uniquePlanRows.length > 0) {
-              await db.insert(dimPlanogramas)
-                .values(uniquePlanRows as any)
-                .onConflictDoUpdate({
-                  target: dimPlanogramas.planItemId,
-                  set: {
-                    saldo: sql`EXCLUDED.saldo`,
-                    preco: sql`EXCLUDED.preco`,
-                    precoPromocao: sql`EXCLUDED.preco_promocao`,
-                    status: sql`EXCLUDED.status`,
-                  },
-                  where: sql`
-                    "dim_planogramas".saldo IS DISTINCT FROM EXCLUDED.saldo OR
-                    "dim_planogramas".preco IS DISTINCT FROM EXCLUDED.preco OR
-                    "dim_planogramas".preco_promocao IS DISTINCT FROM EXCLUDED.preco_promocao OR
-                    "dim_planogramas".status IS DISTINCT FROM EXCLUDED.status
-                  `
-                });
-              planCount += planRows.length;
+              if (uniquePlanRows.length > 0) {
+                await db.insert(dimPlanogramas)
+                  .values(uniquePlanRows as any)
+                  .onConflictDoUpdate({
+                    target: dimPlanogramas.planItemId,
+                    set: {
+                      saldo: sql`EXCLUDED.saldo`,
+                      preco: sql`EXCLUDED.preco`,
+                      precoPromocao: sql`EXCLUDED.preco_promocao`,
+                      status: sql`EXCLUDED.status`,
+                    },
+                    where: sql`
+                      "dim_planogramas".saldo IS DISTINCT FROM EXCLUDED.saldo OR
+                      "dim_planogramas".preco IS DISTINCT FROM EXCLUDED.preco OR
+                      "dim_planogramas".preco_promocao IS DISTINCT FROM EXCLUDED.preco_promocao OR
+                      "dim_planogramas".status IS DISTINCT FROM EXCLUDED.status
+                    `
+                  });
+                planCount += planRows.length;
+              }
             }
+          } catch(e) {
+            log(`Warning: Failed to fetch installation detail for ${m.installation.id}`);
           }
-        } catch(e) {
-          log(`Warning: Failed to fetch installation detail for ${m.installation.id}`);
         }
-        await wait(200); // rate logic
-      }
+      }));
+      await wait(300); // slight delay between chunks
     }
     
     page++;
-    await wait(1000);
+    await wait(500);
   }
   log(`Synced ${instCount} instalações e ${planCount} itens de planograma.`);
 }
 
 async function syncCashlessFacts() {
-  log("Syncing Cashless Facts (últimos 15 dias)...");
+  log("Syncing Cashless Facts (desde 01/01/2026)...");
   
-  const end = new Date();
-  const start = new Date();
-  start.setDate(start.getDate() - 15);
-  
-  let page = 1;
-  let hasMore = true;
+  const endLimit = new Date();
+  let currentStart = new Date('2026-01-01T00:00:00Z');
   let count = 0;
 
-  while(hasMore) {
-    const facts = await fetchApi('/cashless_facts', { 
-      start_date: start.toISOString().split('.')[0] + 'Z',
-      end_date: end.toISOString().split('.')[0] + 'Z',
-      page, 
-      per_page: 1000 
-    });
-    
-    if (!facts || facts.length === 0) break;
-    
-    const rows = facts.map((f: any) => ({
-      vendaId: String(f.id),
-      dataVenda: new Date(f.occurred_at),
-      produtoId: f.good?.id,
-      produto: f.good?.name != null ? String(f.good?.name) : null,
-      categoriaId: f.good?.category_id,
-      instalacao: f.place != null ? String(f.place) : null,
-      cardNumber: f.masked_card_number != null ? String(f.masked_card_number) : null,
-      statusVenda: f.status != null ? String(f.status) : null,
-      tipoCartao: f.eft_card_type?.name != null ? String(f.eft_card_type?.name) : null,
-      tipoPagamento: f.kind != null ? String(f.kind) : null,
-      tipoPix: f.payment_authorizer?.name != null ? String(f.payment_authorizer?.name) : null,
-      valor: f.value,
-      precoCusto: f.cost_price,
-      quantidade: f.quantity,
-    }));
-
-    const uniqueRows = Array.from(new Map(rows.map((r: any) => [r.vendaId, r])).values());
-
-    if (uniqueRows.length > 0) {
-      await db.insert(fatoVendas)
-        .values(uniqueRows as any)
-        .onConflictDoUpdate({
-          target: fatoVendas.vendaId,
-          set: { statusVenda: sql`EXCLUDED.status_venda` },
-          where: sql`"fato_vendas".status_venda IS DISTINCT FROM EXCLUDED.status_venda`
-        });
-      count += uniqueRows.length;
+  while(currentStart < endLimit) {
+    let currentEnd = new Date(currentStart);
+    currentEnd.setDate(currentEnd.getDate() + 30);
+    if (currentEnd > endLimit) {
+      currentEnd = endLimit;
     }
-    page++;
-    await wait(500);
+
+    const startIso = currentStart.toISOString().split('.')[0] + 'Z';
+    const endIso = currentEnd.toISOString().split('.')[0] + 'Z';
+    log(`Syncing Cashless period: ${startIso} to ${endIso}`);
+
+    let page = 1;
+    let hasMore = true;
+
+    while(hasMore) {
+      const facts = await fetchApi('/cashless_facts', { 
+        start_date: startIso,
+        end_date: endIso,
+        page, 
+        per_page: 1000 
+      });
+      
+      if (!facts || facts.length === 0) break;
+      
+      const rows = facts.map((f: any) => ({
+        vendaId: String(f.id),
+        dataVenda: new Date(f.occurred_at),
+        produtoId: f.good?.id,
+        produto: f.good?.name != null ? String(f.good?.name) : null,
+        categoriaId: f.good?.category_id,
+        instalacao: f.place != null ? String(f.place) : null,
+        cardNumber: f.masked_card_number != null ? String(f.masked_card_number) : null,
+        statusVenda: f.status != null ? String(f.status) : null,
+        tipoCartao: f.eft_card_type?.name != null ? String(f.eft_card_type?.name) : null,
+        tipoPagamento: f.kind != null ? String(f.kind) : null,
+        tipoPix: f.payment_authorizer?.name != null ? String(f.payment_authorizer?.name) : null,
+        valor: f.value,
+        precoCusto: f.cost_price,
+        quantidade: f.quantity,
+      }));
+
+      const uniqueRows = Array.from(new Map(rows.map((r: any) => [r.vendaId, r])).values());
+
+      if (uniqueRows.length > 0) {
+        await db.insert(fatoVendas)
+          .values(uniqueRows as any)
+          .onConflictDoUpdate({
+            target: fatoVendas.vendaId,
+            set: { statusVenda: sql`EXCLUDED.status_venda` },
+            where: sql`"fato_vendas".status_venda IS DISTINCT FROM EXCLUDED.status_venda`
+          });
+        count += uniqueRows.length;
+      }
+      page++;
+      await wait(300);
+    }
+    
+    currentStart = currentEnd;
   }
   log(`Synced ${count} vendas.`);
 }
 
 async function syncInventoryMovements() {
-  log("Syncing Movimentos (últimos 15 dias)...");
+  log("Syncing Movimentos (desde 01/01/2026)...");
   
-  const end = new Date();
-  const start = new Date();
-  start.setDate(start.getDate() - 15);
-  
-  let page = 1;
-  let hasMore = true;
+  const endLimit = new Date();
+  let currentStart = new Date('2026-01-01T00:00:00Z');
   let count = 0;
 
-  while(hasMore) {
-    const movs = await fetchApi('/distribution_center_inventories', { 
-      occurred_at_start: start.toISOString().split('.')[0] + 'Z',
-      occurred_at_end: end.toISOString().split('.')[0] + 'Z',
-      page, 
-      per_page: 1000 
-    });
-    
-    if (!movs || movs.length === 0) break;
-    
-    const rows = movs.map((m: any) => ({
-      movimentoId: String(m.id),
-      movimentoData: new Date(m.occurred_at),
-      saldoAnterior: m.balance_before,
-      quantidade: m.value,
-      saldoFinal: m.balance_after,
-      produtoId: m.good?.id,
-      produto: m.good?.display_name != null ? String(m.good?.display_name) : null,
-      fornecedor: m.provider?.name != null ? String(m.provider?.name) : null,
-      operacaoTipo: m.nature_operation != null ? String(m.nature_operation) : null,
-      precoCusto: m.cost_price,
-    }));
-
-    const uniqueRows = Array.from(new Map(rows.map((r: any) => [r.movimentoId, r])).values());
-
-    if (uniqueRows.length > 0) {
-      await db.insert(fatoMovimentos)
-        .values(uniqueRows as any)
-        .onConflictDoUpdate({
-          target: fatoMovimentos.movimentoId,
-          set: { saldoFinal: sql`EXCLUDED.saldo_final` },
-          where: sql`"fato_movimentos".saldo_final IS DISTINCT FROM EXCLUDED.saldo_final`
-        });
-      count += uniqueRows.length;
+  while(currentStart < endLimit) {
+    let currentEnd = new Date(currentStart);
+    currentEnd.setDate(currentEnd.getDate() + 30);
+    if (currentEnd > endLimit) {
+      currentEnd = endLimit;
     }
-    page++;
-    await wait(500);
+
+    const startIso = currentStart.toISOString().split('.')[0] + 'Z';
+    const endIso = currentEnd.toISOString().split('.')[0] + 'Z';
+    log(`Syncing Movimentos period: ${startIso} to ${endIso}`);
+
+    let page = 1;
+    let hasMore = true;
+
+    while(hasMore) {
+      const movs = await fetchApi('/distribution_center_inventories', { 
+        occurred_at_start: startIso,
+        occurred_at_end: endIso,
+        page, 
+        per_page: 1000 
+      });
+      
+      if (!movs || movs.length === 0) break;
+      
+      const rows = movs.map((m: any) => ({
+        movimentoId: String(m.id),
+        movimentoData: new Date(m.occurred_at),
+        saldoAnterior: m.balance_before,
+        quantidade: m.value,
+        saldoFinal: m.balance_after,
+        produtoId: m.good?.id,
+        produto: m.good?.display_name != null ? String(m.good?.display_name) : null,
+        fornecedor: m.provider?.name != null ? String(m.provider?.name) : null,
+        operacaoTipo: m.nature_operation != null ? String(m.nature_operation) : null,
+        precoCusto: m.cost_price,
+      }));
+
+      const uniqueRows = Array.from(new Map(rows.map((r: any) => [r.movimentoId, r])).values());
+
+      if (uniqueRows.length > 0) {
+        await db.insert(fatoMovimentos)
+          .values(uniqueRows as any)
+          .onConflictDoUpdate({
+            target: fatoMovimentos.movimentoId,
+            set: { saldoFinal: sql`EXCLUDED.saldo_final` },
+            where: sql`"fato_movimentos".saldo_final IS DISTINCT FROM EXCLUDED.saldo_final`
+          });
+        count += uniqueRows.length;
+      }
+      page++;
+      await wait(300);
+    }
+    
+    currentStart = currentEnd;
   }
   log(`Synced ${count} movimentos.`);
 }
