@@ -1,10 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { MappedRow } from '../types';
 import { AlertCircle, Calendar, Package, Search, ShoppingCart, TrendingDown, Layers, Map as MapIcon, ChevronDown, Check, Activity } from 'lucide-react';
 import { cn } from '../utils';
 import { UnitDropdown } from './Dropdowns';
-import { db } from '../lib/firebase';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 const API_BASE = (import.meta as any).env?.VITE_API_URL || '';
 
@@ -23,32 +21,23 @@ export function GestaoValidade({ rawData, availableUnits }: GestaoValidadeProps)
   const [vmpayLog, setVmpayLog] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState(false);
 
-  React.useEffect(() => {
-    async function loadData() {
+  useEffect(() => {
+    // Carregar inputs salvos no local storage por enquanto
+    const stored = localStorage.getItem('validadeInputs_cache');
+    if (stored) {
       try {
-        const docRef = doc(db, 'settings', 'validadeInputs');
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setManualInputs(docSnap.data().inputs || {});
-        }
-      } catch(e) {
-        console.error("Failed to load validade inputs", e);
-      } finally {
-        setIsLoaded(true);
-      }
+        setManualInputs(JSON.parse(stored));
+      } catch(e) {}
     }
-    loadData();
+    setIsLoaded(true);
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!isLoaded) return;
-    const timer = setTimeout(async () => {
+    const timer = setTimeout(() => {
        setIsSaving(true);
        try {
-         await setDoc(doc(db, 'settings', 'validadeInputs'), {
-           inputs: manualInputs,
-           updatedAt: serverTimestamp()
-         }, { merge: true });
+         localStorage.setItem('validadeInputs_cache', JSON.stringify(manualInputs));
        } catch(e) {
          console.error("Failed to save validade inputs", e);
        } finally {

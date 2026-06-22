@@ -3,10 +3,7 @@ import * as dotenv from "dotenv";
 
 dotenv.config();
 
-const sqlHost = process.env.SQL_HOST;
-const sqlDbName = process.env.SQL_DB_NAME;
-const user = process.env.SQL_ADMIN_USER;
-const password = process.env.SQL_ADMIN_PASSWORD;
+const databaseUrl = process.env.DATABASE_URL;
 
 export default defineConfig({
   schema: "./src/db/schema.ts",
@@ -14,11 +11,7 @@ export default defineConfig({
   dialect: "postgresql",
   schemaFilter: ["public"],
   dbCredentials: {
-    host: sqlHost || 'localhost',
-    user: user || 'user',
-    password: password || 'pass',
-    database: sqlDbName || 'db',
-    ssl: false,
+    url: databaseUrl || '',
   },
   verbose: true,
 });

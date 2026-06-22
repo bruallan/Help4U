@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "db:push": "drizzle-kit push --config=src/db/drizzle.config.ts",
+    "db:sync": "tsx scripts/sync_vmpay.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

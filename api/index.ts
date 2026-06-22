@@ -2,6 +2,8 @@ import express from "express";
 import cors from "cors";
 import * as dotenv from 'dotenv';
 import nodemailer from 'nodemailer';
+import { db } from '../src/db/index.js';
+import { fatoVendas, dimInstalacoes } from '../src/db/schema.js';
 
 dotenv.config();
 
@@ -10,6 +12,62 @@ app.use(express.json({ limit: '50mb' }));
 app.use(cors());
 
 const BASE_URL = "https://vmpay.vertitecnologia.com.br";
+
+// --- Endpoints via Supabase (Drizzle) ---
+import { exec } from 'child_process';
+app.post('/api/sync-db', (req, res) => {
+  exec('npm run db:sync', (error, stdout, stderr) => {
+    if (error) {
+      console.error(`exec error: ${error}`);
+      return res.status(500).json({ error: error.message });
+    }
+    res.json({ message: "Sync concluído", stdout, stderr });
+  });
+});
+
+app.get('/api/sales', async (req, res) => {
+  try {
+    const data = await db.select().from(fatoVendas);
+    const dbRows = data.map(v => ({
+      date: v.dataVenda,
+      dayDate: v.dataVenda,
+      productName: v.produto || "Produto Desconhecido",
+      buyerId: v.cardNumber || "Desconhecido",
+      salePrice: Number(v.valor) || 0,
+      costPrice: Number(v.precoCusto) || 0,
+      client: v.instalacao || "Desconhecido",
+      category: v.categoriaId ? String(v.categoriaId) : "Sem Categoria",
+      idCupom: v.vendaId
+    }));
+    res.json(dbRows);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/proxy/installations_details', async (req, res) => {
+  try {
+    const ACCESS_TOKEN = process.env.VMPAY_API_KEY;
+    if (!ACCESS_TOKEN) return res.status(401).json({ error: "Missing VMPAY_API_KEY" });
+    
+    // First read machines from the database
+    const instalacoes = await db.select().from(dimInstalacoes);
+    const results = [];
+    
+    for (const inst of instalacoes) {
+        if (!inst.maquinaId || !inst.instalacaoId) continue;
+        const url = `${BASE_URL}/api/v1/machines/${inst.maquinaId}/installations/${inst.instalacaoId}?access_token=${ACCESS_TOKEN}`;
+        const fetchRes = await fetchWithRetry(url);
+        if (fetchRes.ok) {
+           const data = await fetchRes.json();
+           results.push(data);
+        }
+    }
+    res.json(results);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // Reusable robust fetch wrapper with retries and exponential backoff
 async function fetchWithRetry(url: string, options: RequestInit = {}, retries = 4, delayMs = 1200): Promise<Response> {

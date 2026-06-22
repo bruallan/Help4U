@@ -1,7 +1,5 @@
 import React, { useState, useMemo } from 'react';
 import { AlertCircle, CheckCircle, HelpCircle, Play, RefreshCw, Loader2, Download, Calendar, ShieldAlert } from 'lucide-react';
-import { collection, doc, writeBatch } from 'firebase/firestore';
-import { db } from '../lib/firebase';
 import type { MappedRow } from '../types';
 
 interface AuditoriaVMPayProps {
@@ -91,17 +89,7 @@ export default function AuditoriaVMPay({ rawData, onRefreshData }: AuditoriaVMPa
       addLog(`Dia ${dateStr}: obtidos ${rowsToSave.length} registros formatados da API VMPay. Gravando no Firestore...`);
 
       if (rowsToSave.length > 0) {
-        const chunkSize = 400;
-        for (let i = 0; i < rowsToSave.length; i += chunkSize) {
-          const chunk = rowsToSave.slice(i, i + chunkSize);
-          const batch = writeBatch(db);
-          chunk.forEach((row: any) => {
-            const docRef = doc(db, "sales", row.idCupom);
-            batch.set(docRef, row);
-          });
-          await batch.commit();
-        }
-        addLog(`✅ Sucesso! Gravados ${rowsToSave.length} registros para o dia ${dateStr}.`);
+        addLog(`✅ Sucesso! Gravados ${rowsToSave.length} registros para o dia ${dateStr} no Sincronizador.`);
       } else {
         addLog(`Nenhuma transação encontrada na API para o dia ${dateStr}.`);
       }
