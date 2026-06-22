@@ -3,7 +3,7 @@ name: Sync VMPay
 on:
   schedule:
     # Runs every day at 00:00 UTC (Meia noite)
-    - cron: '0 0 * * *'
+    - cron: '0 3 * * *'
   workflow_dispatch:
     # Allows manual triggering
 

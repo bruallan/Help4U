@@ -56,15 +56,18 @@ async function syncCategories() {
   const categories = await fetchApi('/categories', { per_page: 1000 });
   const rows = categories.map((c: any) => ({
     id: c.id,
-    nome: c.name,
+    nome: c.name != null ? String(c.name) : "Desconhecido",
   }));
   
-  if (rows.length > 0) {
+  const uniqueRows = Array.from(new Map(rows.map((r: any) => [r.id, r])).values());
+
+  if (uniqueRows.length > 0) {
     await db.insert(dimCategorias)
-      .values(rows)
+      .values(uniqueRows as any)
       .onConflictDoUpdate({
         target: dimCategorias.id,
         set: { nome: sql`EXCLUDED.nome` },
+        where: sql`"dim_categorias".nome IS DISTINCT FROM EXCLUDED.nome`,
       });
   }
   log(`Synced ${rows.length} categorias.`);
@@ -87,25 +90,25 @@ async function syncProducts() {
     for (const p of products) {
       prodRows.push({
         id: p.id,
-        produto: p.name,
-        categoria: null, // We'll rely on joining with dimCategorias later if needed, or update if provided directly
+        produto: p.name != null ? String(p.name) : "Produto Desconhecido",
+        categoria: null,
         categoriaId: p.category_id,
-        codigoBarras: p.barcode,
+        codigoBarras: p.barcode != null ? String(p.barcode) : null,
         precoCusto: p.cost_price,
         precoPadrao: p.default_price,
         totalVendido: p.vendible_balance,
-        ncmCode: p.ncm_code,
-        cestCode: p.cest_code,
+        ncmCode: p.ncm_code != null ? String(p.ncm_code) : null,
+        cestCode: p.cest_code != null ? String(p.cest_code) : null,
         taxOperationId: p.tax_operation?.id,
-        taxOperationName: p.tax_operation?.name,
+        taxOperationName: p.tax_operation?.name != null ? String(p.tax_operation?.name) : null,
         quantidadeEstoque: p.inventories?.[0]?.total_quantity || 0,
       });
 
       if (p.barcode) {
         cbRows.push({
           idProduto: p.id,
-          codigoPrincipal: p.barcode,
-          codigoAdicional: p.barcode,
+          codigoPrincipal: String(p.barcode),
+          codigoAdicional: String(p.barcode),
         });
       }
 
@@ -120,9 +123,11 @@ async function syncProducts() {
       }
     }
 
-    if (prodRows.length > 0) {
+    const uniqueProdRows = Array.from(new Map(prodRows.map((r: any) => [r.id, r])).values());
+
+    if (uniqueProdRows.length > 0) {
       await db.insert(dimProdutos)
-        .values(prodRows)
+        .values(uniqueProdRows as any)
         .onConflictDoUpdate({
           target: dimProdutos.id,
           set: {
@@ -137,7 +142,15 @@ async function syncProducts() {
             taxOperationId: sql`EXCLUDED.tax_operation_id`,
             taxOperationName: sql`EXCLUDED.tax_operation_name`,
             quantidadeEstoque: sql`EXCLUDED.quantidade_estoque`,
-          }
+          },
+          where: sql`
+            "dim_produtos".produto IS DISTINCT FROM EXCLUDED.produto OR
+            "dim_produtos".categoria_id IS DISTINCT FROM EXCLUDED.categoria_id OR
+            "dim_produtos".preco_custo IS DISTINCT FROM EXCLUDED.preco_custo OR
+            "dim_produtos".preco_padrao IS DISTINCT FROM EXCLUDED.preco_padrao OR
+            "dim_produtos".total_vendido IS DISTINCT FROM EXCLUDED.total_vendido OR
+            "dim_produtos".quantidade_estoque IS DISTINCT FROM EXCLUDED.quantidade_estoque
+          `,
         });
     }
 
@@ -176,12 +189,13 @@ async function syncMachinesAndInstallations() {
         await db.insert(dimInstalacoes)
           .values({
             instalacaoId: m.installation.id,
-            instalacao: m.installation.place,
+            instalacao: m.installation.place != null ? String(m.installation.place) : "Desconhecida",
             maquinaId: m.id,
           })
           .onConflictDoUpdate({
             target: dimInstalacoes.instalacaoId,
             set: { instalacao: sql`EXCLUDED.instalacao` },
+            where: sql`"dim_instalacoes".instalacao IS DISTINCT FROM EXCLUDED.instalacao`,
           });
         instCount++;
 
@@ -192,10 +206,10 @@ async function syncMachinesAndInstallations() {
             const planRows = detail.current_planogram.items.map((item: any) => ({
               planItemId: item.id,
               instalacaoId: detail.id,
-              instalacao: detail.place,
+              instalacao: detail.place != null ? String(detail.place) : "Desconhecida",
               planId: detail.current_planogram.id,
               idProduto: item.good?.id,
-              produto: item.good?.name,
+              produto: item.good?.name != null ? String(item.good?.name) : null,
               saldo: item.current_balance,
               nivelPar: item.par_level,
               nivelAlerta: item.alert_level,
@@ -204,14 +218,16 @@ async function syncMachinesAndInstallations() {
               preco: item.desired_price,
               usaPrecoPadrao: item.use_default_price_product,
               precoPromocao: item.promotional_price,
-              status: item.status,
+              status: item.status != null ? String(item.status) : null,
               validade: item.expiration_date ? new Date(item.expiration_date) : null,
               alternativoApenas: item.alternative_only,
             }));
 
-            if (planRows.length > 0) {
+            const uniquePlanRows = Array.from(new Map(planRows.map((r: any) => [r.planItemId, r])).values());
+
+            if (uniquePlanRows.length > 0) {
               await db.insert(dimPlanogramas)
-                .values(planRows)
+                .values(uniquePlanRows as any)
                 .onConflictDoUpdate({
                   target: dimPlanogramas.planItemId,
                   set: {
@@ -219,7 +235,13 @@ async function syncMachinesAndInstallations() {
                     preco: sql`EXCLUDED.preco`,
                     precoPromocao: sql`EXCLUDED.preco_promocao`,
                     status: sql`EXCLUDED.status`,
-                  }
+                  },
+                  where: sql`
+                    "dim_planogramas".saldo IS DISTINCT FROM EXCLUDED.saldo OR
+                    "dim_planogramas".preco IS DISTINCT FROM EXCLUDED.preco OR
+                    "dim_planogramas".preco_promocao IS DISTINCT FROM EXCLUDED.preco_promocao OR
+                    "dim_planogramas".status IS DISTINCT FROM EXCLUDED.status
+                  `
                 });
               planCount += planRows.length;
             }
@@ -262,27 +284,30 @@ async function syncCashlessFacts() {
       vendaId: String(f.id),
       dataVenda: new Date(f.occurred_at),
       produtoId: f.good?.id,
-      produto: f.good?.name,
+      produto: f.good?.name != null ? String(f.good?.name) : null,
       categoriaId: f.good?.category_id,
-      instalacao: f.place,
-      cardNumber: f.masked_card_number,
-      statusVenda: f.status,
-      tipoCartao: f.eft_card_type?.name,
-      tipoPagamento: f.kind,
-      tipoPix: f.payment_authorizer?.name,
+      instalacao: f.place != null ? String(f.place) : null,
+      cardNumber: f.masked_card_number != null ? String(f.masked_card_number) : null,
+      statusVenda: f.status != null ? String(f.status) : null,
+      tipoCartao: f.eft_card_type?.name != null ? String(f.eft_card_type?.name) : null,
+      tipoPagamento: f.kind != null ? String(f.kind) : null,
+      tipoPix: f.payment_authorizer?.name != null ? String(f.payment_authorizer?.name) : null,
       valor: f.value,
       precoCusto: f.cost_price,
       quantidade: f.quantity,
     }));
 
-    if (rows.length > 0) {
+    const uniqueRows = Array.from(new Map(rows.map((r: any) => [r.vendaId, r])).values());
+
+    if (uniqueRows.length > 0) {
       await db.insert(fatoVendas)
-        .values(rows)
+        .values(uniqueRows as any)
         .onConflictDoUpdate({
           target: fatoVendas.vendaId,
-          set: { statusVenda: sql`EXCLUDED.status_venda` }
+          set: { statusVenda: sql`EXCLUDED.status_venda` },
+          where: sql`"fato_vendas".status_venda IS DISTINCT FROM EXCLUDED.status_venda`
         });
-      count += rows.length;
+      count += uniqueRows.length;
     }
     page++;
     await wait(500);
@@ -318,20 +343,23 @@ async function syncInventoryMovements() {
       quantidade: m.value,
       saldoFinal: m.balance_after,
       produtoId: m.good?.id,
-      produto: m.good?.display_name,
-      fornecedor: m.provider?.name,
-      operacaoTipo: m.nature_operation,
+      produto: m.good?.display_name != null ? String(m.good?.display_name) : null,
+      fornecedor: m.provider?.name != null ? String(m.provider?.name) : null,
+      operacaoTipo: m.nature_operation != null ? String(m.nature_operation) : null,
       precoCusto: m.cost_price,
     }));
 
-    if (rows.length > 0) {
+    const uniqueRows = Array.from(new Map(rows.map((r: any) => [r.movimentoId, r])).values());
+
+    if (uniqueRows.length > 0) {
       await db.insert(fatoMovimentos)
-        .values(rows)
+        .values(uniqueRows as any)
         .onConflictDoUpdate({
           target: fatoMovimentos.movimentoId,
-          set: { saldoFinal: sql`EXCLUDED.saldo_final` }
+          set: { saldoFinal: sql`EXCLUDED.saldo_final` },
+          where: sql`"fato_movimentos".saldo_final IS DISTINCT FROM EXCLUDED.saldo_final`
         });
-      count += rows.length;
+      count += uniqueRows.length;
     }
     page++;
     await wait(500);
@@ -354,6 +382,8 @@ async function runSync() {
     process.exit(0);
   } catch(e: any) {
      log(`PROCESS FAILED: ${e.message}`);
+     if (e.cause) log(`CAUSED BY: ${e.cause}`);
+     if (e.stack) log(`STACK: ${e.stack}`);
      process.exit(1);
   }
 }
