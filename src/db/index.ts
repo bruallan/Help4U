@@ -1,13 +1,15 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
-import * as schema from './schema.ts';
+import * as schema from './schema';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
 
+const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+
 export const createPool = () => {
   return new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: dbUrl,
     connectionTimeoutMillis: 15000,
   });
 };

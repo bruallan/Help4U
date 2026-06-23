@@ -2,8 +2,8 @@ import express from "express";
 import cors from "cors";
 import * as dotenv from 'dotenv';
 import nodemailer from 'nodemailer';
-import { db } from '../src/db/index.js';
-import { fatoVendas, dimInstalacoes } from '../src/db/schema.js';
+import { db } from '../src/db/index';
+import { fatoVendas, dimInstalacoes } from '../src/db/schema';
 
 dotenv.config();
 
