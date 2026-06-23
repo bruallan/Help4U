@@ -19,6 +19,7 @@ import { PosEstocagem } from './components/PosEstocagem';
 import { AnaliseCesta } from './components/AnaliseCesta';
 import { MapaCalor } from './components/MapaCalor';
 import { GestaoValidade } from './components/GestaoValidade';
+import ValidadeEstoque from './components/ValidadeEstoque';
 import AuditoriaVMPay from './components/AuditoriaVMPay';
 import RepasseSindicos from './components/RepasseSindicos';
 
@@ -118,7 +119,7 @@ export default function App() {
     loadGlobalData();
   }, []);
 
-  const [activeTab, setActiveTab] = useState<'vendas' | 'indicadores' | 'lucro_fluxo' | 'dispersao_mercados' | 'dispersao_produtos' | 'desempenho_tipo' | 'plano_acao' | 'pos_estocagem' | 'analise_cesta' | 'mapa_calor' | 'desempenho_mensal' | 'gestao_validade' | 'auditoria' | 'repasse_sindicos'>('vendas');
+  const [activeTab, setActiveTab] = useState<'vendas' | 'indicadores' | 'lucro_fluxo' | 'dispersao_mercados' | 'dispersao_produtos' | 'desempenho_tipo' | 'plano_acao' | 'pos_estocagem' | 'analise_cesta' | 'mapa_calor' | 'desempenho_mensal' | 'gestao_validade' | 'auditoria' | 'repasse_sindicos' | 'validade_estoque'>('vendas');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<any>(null);
@@ -1210,6 +1211,19 @@ export default function App() {
             <Building className="w-5 h-5 text-emerald-500" />
             <span>Repasse Síndicos</span>
           </button>
+
+          <button
+            onClick={() => { setActiveTab('validade_estoque'); setIsSidebarOpen(false); }}
+            className={cn(
+              "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
+              activeTab === 'validade_estoque' 
+                ? "bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400" 
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
+            )}
+          >
+            <AlertCircle className="w-5 h-5 text-purple-500" />
+            <span>Validade Estoque</span>
+          </button>
         </nav>
 
         <div className="p-4 border-t border-slate-100 dark:border-slate-800 space-y-2">
@@ -1305,7 +1319,7 @@ export default function App() {
             
             <header>
               <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-                {activeTab === 'vendas' ? 'Dashboard de Vendas' : activeTab === 'lucro_fluxo' ? 'Lucro e Fluxo Diário' : activeTab === 'dispersao_mercados' ? 'Dispersão de Mercados' : activeTab === 'dispersao_produtos' ? 'Dispersão de Produtos' : activeTab === 'desempenho_tipo' ? 'Desempenho Tipo' : activeTab === 'desempenho_mensal' ? 'Desempenho Mensal' : activeTab === 'plano_acao' ? 'Plano de Ação' : activeTab === 'gestao_validade' ? 'Gestão de Validade' : activeTab === 'pos_estocagem' ? 'Pós-Estocagem' : activeTab === 'analise_cesta' ? 'Análise de Cesta' : activeTab === 'mapa_calor' ? 'Mapa de Calor' : activeTab === 'auditoria' ? 'Revisão e Auditoria API VMPay' : activeTab === 'repasse_sindicos' ? 'Relatório de Repasse para Síndicos' : 'Indicadores de Risco'}
+                {activeTab === 'vendas' ? 'Dashboard de Vendas' : activeTab === 'lucro_fluxo' ? 'Lucro e Fluxo Diário' : activeTab === 'dispersao_mercados' ? 'Dispersão de Mercados' : activeTab === 'dispersao_produtos' ? 'Dispersão de Produtos' : activeTab === 'desempenho_tipo' ? 'Desempenho Tipo' : activeTab === 'desempenho_mensal' ? 'Desempenho Mensal' : activeTab === 'plano_acao' ? 'Plano de Ação' : activeTab === 'gestao_validade' ? 'Gestão de Validade' : activeTab === 'pos_estocagem' ? 'Pós-Estocagem' : activeTab === 'analise_cesta' ? 'Análise de Cesta' : activeTab === 'mapa_calor' ? 'Mapa de Calor' : activeTab === 'auditoria' ? 'Revisão e Auditoria API VMPay' : activeTab === 'repasse_sindicos' ? 'Relatório de Repasse para Síndicos' : activeTab === 'validade_estoque' ? 'Validade Estoque' : 'Indicadores de Risco'}
               </h1>
               <p className="text-slate-500 dark:text-slate-400 mt-2">
                 {activeTab === 'vendas' 
@@ -1334,6 +1348,8 @@ export default function App() {
                   ? 'Compare as transações registradas no Firestore com a API oficial do VMPay para identificar e corrigir lacunas de vendas em massa.'
                   : activeTab === 'repasse_sindicos'
                   ? 'Acompanhe mês a mês o faturamento, cálculo de repasse, energia e relatórios de perdas/furtos de cada condomínio.'
+                  : activeTab === 'validade_estoque'
+                  ? 'Gerencie e verifique as validades dos lotes de produtos no seu estoque central.'
                   : 'Veja alertas de risco para seus produtos.'}
               </p>
             </header>
@@ -1435,7 +1451,7 @@ export default function App() {
                         </thead>
                         <tbody className="bg-white divide-y divide-slate-100">
                           {filteredStats.length > 0 ? (
-                            applySort(filteredStats).map((stat, idx) => (
+                            applySort<any>(filteredStats).map((stat: any, idx: number) => (
                               <tr key={idx} className="hover:bg-slate-50 transition-colors">
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
                                   {stat.name}
@@ -1611,7 +1627,7 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-slate-200">
-                          {applySort(filteredStats.filter(s => s.status === 'Alerta de Risco')).map((stat, idx) => (
+                          {applySort<any>(filteredStats.filter(s => s.status === 'Alerta de Risco')).map((stat: any, idx: number) => (
                             <tr key={idx} className="hover:bg-slate-50 transition-colors">
                               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{stat.name}</td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-slate-600">{stat.volume}</td>
@@ -1913,8 +1929,8 @@ export default function App() {
                         </thead>
                         <tbody className="bg-white dark:bg-slate-900 divide-y divide-slate-200 dark:divide-slate-800">
                           {filteredProductScatterStats.filter(p => p.totalCost === 0).length > 0 ? (
-                            applySort(filteredProductScatterStats.filter(p => p.totalCost === 0), (a,b) => b.volume - a.volume)
-                              .map(p => (
+                            applySort<any>(filteredProductScatterStats.filter(p => p.totalCost === 0), (a: any,b: any) => b.volume - a.volume)
+                              .map((p: any) => (
                               <tr key={p.name} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                                 <td className="px-6 py-4 text-sm font-medium text-slate-900 dark:text-slate-100">
                                   {p.name}
@@ -2213,7 +2229,7 @@ export default function App() {
                             </tr>
                           </thead>
                           <tbody className="bg-white dark:bg-slate-900 divide-y divide-slate-200 dark:divide-slate-800">
-                            {applySort(actionPlanData, (a,b) => b.volumeTotal - a.volumeTotal).map((row, idx) => {
+                            {applySort<any>(actionPlanData, (a: any,b: any) => b.volumeTotal - a.volumeTotal).map((row: any, idx: number) => {
                               return (
                                 <tr key={row.produto} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                                   <td className="px-6 py-4 text-sm font-medium text-slate-900 dark:text-slate-100">{row.produto}</td>
@@ -2287,6 +2303,9 @@ export default function App() {
             )}
             {activeTab === 'repasse_sindicos' && rawData && (
               <RepasseSindicos rawData={rawData} availableUnits={availableUnits} />
+            )}
+            {activeTab === 'validade_estoque' && rawData && (
+              <ValidadeEstoque rawData={rawData} />
             )}
           </div>
         </div>

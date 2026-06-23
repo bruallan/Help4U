@@ -83,3 +83,11 @@ export const fatoMovimentos = pgTable('fato_movimentos', {
   operacaoTipo: text('operacao_tipo'),
   precoCusto: doublePrecision('preco_custo'),
 });
+
+export const lotesEstoque = pgTable('lotes_estoque', {
+  idLote: serial('id_lote').primaryKey(),
+  produtoId: integer('produto_id').references(() => dimProdutos.id),
+  produto: text('produto'),
+  dataValidade: timestamp('data_validade'),
+  quantidadeAtual: integer('quantidade_atual'),
+});

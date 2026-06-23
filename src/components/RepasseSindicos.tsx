@@ -288,7 +288,7 @@ export default function RepasseSindicos({ rawData, availableUnits }: RepasseSind
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {filteredData.length > 0 ? (
-                applySort(filteredData).map((row, idx) => (
+                applySort<any>(filteredData).map((row: any, idx) => (
                   <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                     <td className="py-3 px-4">
                       {row.date ? new Date(row.date).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'N/A'}

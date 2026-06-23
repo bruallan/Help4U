@@ -399,7 +399,7 @@ export function GestaoValidade({ rawData, availableUnits }: GestaoValidadeProps)
                    </td>
                  </tr>
                )}
-               {applySort(tableData).map((row, idx) => {
+               {applySort<any>(tableData).map((row: any, idx) => {
                   const isInfinity = row.ir === Infinity;
                   return (
                     <tr key={row.sku} className={cn("border-b dark:border-slate-800 transition-colors", row.isRisk ? "bg-red-50/50 dark:bg-red-900/10 hover:bg-red-50 dark:hover:bg-red-900/20" : "hover:bg-slate-50 dark:hover:bg-slate-800/50")}>

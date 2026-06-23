@@ -3,7 +3,8 @@ import cors from "cors";
 import * as dotenv from 'dotenv';
 import nodemailer from 'nodemailer';
 import { db } from '../src/db/index.js';
-import { fatoVendas, dimInstalacoes, dimPlanogramas } from '../src/db/schema.js';
+import { fatoVendas, dimInstalacoes, dimPlanogramas, dimProdutos, lotesEstoque, dimCodigosDeBarra } from '../src/db/schema.js';
+import { eq } from 'drizzle-orm';
 
 dotenv.config();
 
@@ -54,6 +55,83 @@ app.get('/api/planogramas', async (req, res) => {
   try {
     const data = await db.select().from(dimPlanogramas);
     res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/produtos', async (req, res) => {
+  try {
+    const data = await db.select().from(dimProdutos);
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/lotes', async (req, res) => {
+  try {
+    const data = await db.select().from(lotesEstoque);
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/lotes', async (req, res) => {
+  try {
+    const { produtoId, produto, dataValidade, quantidadeAtual } = req.body;
+    const [newLote] = await db.insert(lotesEstoque).values({
+      produtoId: produtoId ? parseInt(produtoId, 10) : null,
+      produto,
+      dataValidade: new Date(dataValidade),
+      quantidadeAtual: parseInt(quantidadeAtual, 10)
+    }).returning();
+    res.json(newLote);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/barcode/:code', async (req, res) => {
+  try {
+    const code = req.params.code;
+    const result = await db.select()
+      .from(dimCodigosDeBarra)
+      .where(eq(dimCodigosDeBarra.codigoPrincipal, code))
+      .limit(1);
+
+    if (result.length > 0) {
+      const idProduto = result[0].idProduto;
+      const prodResult = await db.select()
+        .from(dimProdutos)
+        .where(eq(dimProdutos.id, idProduto))
+        .limit(1);
+      
+      if (prodResult.length > 0) {
+        return res.json(prodResult[0]);
+      }
+    }
+    
+    // Also try checking codigoAdicional if needed
+    const result2 = await db.select()
+      .from(dimCodigosDeBarra)
+      .where(eq(dimCodigosDeBarra.codigoAdicional, code))
+      .limit(1);
+
+    if (result2.length > 0) {
+      const idProduto = result2[0].idProduto;
+      const prodResult = await db.select()
+        .from(dimProdutos)
+        .where(eq(dimProdutos.id, idProduto))
+        .limit(1);
+      
+      if (prodResult.length > 0) {
+        return res.json(prodResult[0]);
+      }
+    }
+
+    res.status(404).json({ error: 'Barcode not found' });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
