@@ -83,6 +83,7 @@ async function syncProducts() {
   while(hasMore) {
     const products = await fetchApi('/products', { page, per_page: 1000 });
     if (!products || products.length === 0) break;
+    if (products.length < 1000) hasMore = false;
     
     const prodRows = [];
     const cbRows = [];
@@ -183,6 +184,7 @@ async function syncMachinesAndInstallations() {
     log(`Fetching machines page ${page}...`);
     const machines = await fetchApi('/machines', { page, per_page: 100 });
     if (!machines || machines.length === 0) break;
+    if (machines.length < 100) hasMore = false;
     
     // Process in batches of 10 to speed up
     const chunkSize = 10;
@@ -296,6 +298,7 @@ async function syncCashlessFacts() {
       });
       
       if (!facts || facts.length === 0) break;
+      if (facts.length < 1000) hasMore = false;
       
       const rows = facts.map((f: any) => ({
         vendaId: String(f.id),
@@ -365,6 +368,7 @@ async function syncInventoryMovements() {
       });
       
       if (!movs || movs.length === 0) break;
+      if (movs.length < 1000) hasMore = false;
       
       const rows = movs.map((m: any) => ({
         movimentoId: String(m.id),
