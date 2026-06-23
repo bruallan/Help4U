@@ -2,14 +2,19 @@ import express from "express";
 import cors from "cors";
 import * as dotenv from 'dotenv';
 import nodemailer from 'nodemailer';
-import { db } from '../src/db/index';
-import { fatoVendas, dimInstalacoes } from '../src/db/schema';
+import { db } from '../src/db/index.js';
+import { fatoVendas, dimInstalacoes } from '../src/db/schema.js';
 
 dotenv.config();
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(cors());
+
+// Health Check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', time: new Date().toISOString() });
+});
 
 const BASE_URL = "https://vmpay.vertitecnologia.com.br";
 
