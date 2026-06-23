@@ -3,7 +3,7 @@ import cors from "cors";
 import * as dotenv from 'dotenv';
 import nodemailer from 'nodemailer';
 import { db } from '../src/db/index.js';
-import { fatoVendas, dimInstalacoes } from '../src/db/schema.js';
+import { fatoVendas, dimInstalacoes, dimPlanogramas } from '../src/db/schema.js';
 
 dotenv.config();
 
@@ -45,6 +45,15 @@ app.get('/api/sales', async (req, res) => {
       idCupom: v.vendaId
     }));
     res.json(dbRows);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/planogramas', async (req, res) => {
+  try {
+    const data = await db.select().from(dimPlanogramas);
+    res.json(data);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }

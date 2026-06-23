@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { MappedRow } from '../types';
-import { AlertCircle, Calendar, Package, Search, ShoppingCart, TrendingDown, Layers, Map as MapIcon, ChevronDown, Check, Activity } from 'lucide-react';
+import { AlertCircle, Calendar, Package, Search, ShoppingCart, TrendingDown, Layers, Map as MapIcon, ChevronDown, Check, Activity, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { cn } from '../utils';
 import { UnitDropdown } from './Dropdowns';
 
@@ -20,6 +20,39 @@ export function GestaoValidade({ rawData, availableUnits }: GestaoValidadeProps)
   const [isFetchingVMPay, setIsFetchingVMPay] = useState(false);
   const [vmpayLog, setVmpayLog] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState(false);
+
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
+
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const getSortIcon = (key: string) => {
+    if (!sortConfig || sortConfig.key !== key) {
+      return <ArrowUpDown className="w-3 h-3 ml-1 inline-block text-slate-400" />;
+    }
+    if (sortConfig.direction === 'asc') {
+      return <ArrowUp className="w-3 h-3 ml-1 inline-block text-orange-600 dark:text-orange-400" />;
+    }
+    return <ArrowDown className="w-3 h-3 ml-1 inline-block text-orange-600 dark:text-orange-400" />;
+  };
+
+  const applySort = <T,>(data: T[]): T[] => {
+    if (!sortConfig) return data;
+    return [...data].sort((a: any, b: any) => {
+      const aVal = a[sortConfig.key];
+      const bVal = b[sortConfig.key];
+      if (aVal === null || aVal === undefined) return sortConfig.direction === 'asc' ? 1 : -1;
+      if (bVal === null || bVal === undefined) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  };
 
   useEffect(() => {
     // Carregar inputs salvos no local storage por enquanto
@@ -57,20 +90,36 @@ export function GestaoValidade({ rawData, availableUnits }: GestaoValidadeProps)
     setIsFetchingVMPay(true);
     setVmpayLog([]);
     try {
-      const res = await fetch(`${API_BASE}/api/load-validades`);
+      const res = await fetch(`${API_BASE}/api/planogramas`);
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || "Erro no servidor");
       }
-      if (data.data) {
-        setManualInputs(prev => ({...prev, ...data.data}));
+      
+      const newInputs: Record<string, { date: string; qty: number }> = {};
+      let updatedCount = 0;
+      
+      for (const item of data) {
+        if (item.instalacao && item.produto) {
+          const key = `${item.instalacao}_${item.produto}`;
+          let dateStr = "";
+          if (item.validade) {
+            // Se for data completa ISO, pegar apenas YYYY-MM-DD
+            dateStr = new Date(item.validade).toISOString().split('T')[0];
+          }
+          newInputs[key] = {
+            date: dateStr,
+            qty: item.saldo || 0
+          };
+          updatedCount++;
+        }
       }
-      if (data.logs) {
-        setVmpayLog(data.logs);
-        setShowLogs(true);
-      }
+      
+      setManualInputs(prev => ({...prev, ...newInputs}));
+      setVmpayLog([`Importados ${updatedCount} produtos do planograma com sucesso.`]);
+      setShowLogs(true);
     } catch (e: any) {
-       console.error("VMPay Fetch Error", e);
+       console.error("Fetch Error", e);
        alert("Erro ao buscar dados: " + e.message);
     } finally {
        setIsFetchingVMPay(false);
@@ -331,15 +380,15 @@ export function GestaoValidade({ rawData, availableUnits }: GestaoValidadeProps)
            <table className="w-full text-sm text-left text-slate-500 dark:text-slate-400">
              <thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-950 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
                <tr>
-                 <th className="px-4 py-3">SKU / Produto</th>
-                 <th className="px-4 py-3">VMD</th>
-                 <th className="px-4 py-3">Giro Alto/Médio</th>
-                 <th className="px-4 py-3">Qtde a Vencer (E)</th>
-                 <th className="px-4 py-3">Data Validade</th>
-                 <th className="px-4 py-3">DPV</th>
-                 <th className="px-4 py-3">TE</th>
-                 <th className="px-4 py-3">Risco (IR)</th>
-                 <th className="px-4 py-3">Ação Sugerida</th>
+                 <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('sku')}>SKU / Produto {getSortIcon('sku')}</th>
+                 <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('vmd')}>VMD {getSortIcon('vmd')}</th>
+                 <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('isHighTurnover')}>Giro Alto/Médio {getSortIcon('isHighTurnover')}</th>
+                 <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('qty')}>Qtde a Vencer (E) {getSortIcon('qty')}</th>
+                 <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('date')}>Data Validade {getSortIcon('date')}</th>
+                 <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('dpv')}>DPV {getSortIcon('dpv')}</th>
+                 <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('te')}>TE {getSortIcon('te')}</th>
+                 <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('ir')}>Risco (IR) {getSortIcon('ir')}</th>
+                 <th className="px-4 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('actionRoute')}>Ação Sugerida {getSortIcon('actionRoute')}</th>
                </tr>
              </thead>
              <tbody>
@@ -350,7 +399,7 @@ export function GestaoValidade({ rawData, availableUnits }: GestaoValidadeProps)
                    </td>
                  </tr>
                )}
-               {tableData.map((row, idx) => {
+               {applySort(tableData).map((row, idx) => {
                   const isInfinity = row.ir === Infinity;
                   return (
                     <tr key={row.sku} className={cn("border-b dark:border-slate-800 transition-colors", row.isRisk ? "bg-red-50/50 dark:bg-red-900/10 hover:bg-red-50 dark:hover:bg-red-900/20" : "hover:bg-slate-50 dark:hover:bg-slate-800/50")}>

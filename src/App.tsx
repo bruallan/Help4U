@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { UploadCloud, Search, FileSpreadsheet, AlertCircle, Loader2, LayoutDashboard, ShoppingCart, TrendingUp, Menu, X, ZoomIn, ZoomOut, Download, Wallet, Calendar, ChevronDown, Check, Dot, Activity, Sun, Moon, Package, ShoppingBag, Map as MapIcon, ShieldAlert, Building } from 'lucide-react';
+import { UploadCloud, Search, FileSpreadsheet, AlertCircle, Loader2, LayoutDashboard, ShoppingCart, TrendingUp, Menu, X, ZoomIn, ZoomOut, Download, Wallet, Calendar, ChevronDown, Check, Dot, Activity, Sun, Moon, Package, ShoppingBag, Map as MapIcon, ShieldAlert, Building, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, ComposedChart, Bar, LineChart, Line, Legend, ReferenceLine } from 'recharts';
 
 import { cn, parseExcelDate, formatCurrency } from './utils';
@@ -124,6 +124,39 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<any>(null);
   
   const [rawData, setRawData] = useState<MappedRow[] | null>(null);
+
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
+
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const getSortIcon = (key: string) => {
+    if (!sortConfig || sortConfig.key !== key) {
+      return <ArrowUpDown className="w-3 h-3 ml-1 inline-block text-slate-400" />;
+    }
+    if (sortConfig.direction === 'asc') {
+      return <ArrowUp className="w-3 h-3 ml-1 inline-block text-orange-600 dark:text-orange-400" />;
+    }
+    return <ArrowDown className="w-3 h-3 ml-1 inline-block text-orange-600 dark:text-orange-400" />;
+  };
+
+  const applySort = <T,>(data: T[], defaultSort?: (a: T, b: T) => number): T[] => {
+    if (!sortConfig) return defaultSort ? [...data].sort(defaultSort) : data;
+    return [...data].sort((a: any, b: any) => {
+      const aVal = a[sortConfig.key];
+      const bVal = b[sortConfig.key];
+      if (aVal === null || aVal === undefined) return sortConfig.direction === 'asc' ? 1 : -1;
+      if (bVal === null || bVal === undefined) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  };
 
   const syncAbortControllerRef = useRef<AbortController | null>(null);
 
@@ -1383,26 +1416,26 @@ export default function App() {
                       <table className="min-w-full divide-y divide-slate-200">
                         <thead className="bg-slate-50">
                           <tr>
-                            <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                              Produto
+                            <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('name')}>
+                              Produto {getSortIcon('name')}
                             </th>
-                            <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                              Qtd. Vendas
+                            <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('salesCount')}>
+                              Qtd. Vendas {getSortIcon('salesCount')}
                             </th>
-                            <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                              Velocidade Média<br/><span className="text-[10px] font-medium normal-case text-slate-400">(vendas / dia)</span>
+                            <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('velocity')}>
+                              Velocidade Média<br/><span className="text-[10px] font-medium normal-case text-slate-400">(vendas / dia)</span> {getSortIcon('velocity')}
                             </th>
-                            <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                              Velocidade Bruta<br/><span className="text-[10px] font-medium normal-case text-slate-400">(vendas / dia)</span>
+                            <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('grossVelocity')}>
+                              Velocidade Bruta<br/><span className="text-[10px] font-medium normal-case text-slate-400">(vendas / dia)</span> {getSortIcon('grossVelocity')}
                             </th>
-                            <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                              Tempo para Vender 1 Unidade<br/><span className="text-[10px] font-medium normal-case text-slate-400">(dias)</span>
+                            <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('timeToSellOne')}>
+                              Tempo para Vender 1 Unidade<br/><span className="text-[10px] font-medium normal-case text-slate-400">(dias)</span> {getSortIcon('timeToSellOne')}
                             </th>
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-slate-100">
                           {filteredStats.length > 0 ? (
-                            filteredStats.map((stat, idx) => (
+                            applySort(filteredStats).map((stat, idx) => (
                               <tr key={idx} className="hover:bg-slate-50 transition-colors">
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
                                   {stat.name}
@@ -1570,15 +1603,15 @@ export default function App() {
                       <table className="min-w-full divide-y divide-slate-200">
                         <thead className="bg-slate-50">
                           <tr>
-                            <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Nome</th>
-                            <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Volume</th>
-                            <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">HHI</th>
-                            <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Margem</th>
-                            <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Vendas PIX</th>
+                            <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('name')}>Nome {getSortIcon('name')}</th>
+                            <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('volume')}>Volume {getSortIcon('volume')}</th>
+                            <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('hhi')}>HHI {getSortIcon('hhi')}</th>
+                            <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('margin')}>Margem {getSortIcon('margin')}</th>
+                            <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('pixPercent')}>Vendas PIX {getSortIcon('pixPercent')}</th>
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-slate-200">
-                          {filteredStats.filter(s => s.status === 'Alerta de Risco').map((stat, idx) => (
+                          {applySort(filteredStats.filter(s => s.status === 'Alerta de Risco')).map((stat, idx) => (
                             <tr key={idx} className="hover:bg-slate-50 transition-colors">
                               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{stat.name}</td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-slate-600">{stat.volume}</td>
@@ -1873,16 +1906,14 @@ export default function App() {
                       <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
                         <thead className="bg-slate-50 dark:bg-slate-950">
                           <tr>
-                            <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Produto / Categoria</th>
-                            <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Volume de Vendas</th>
-                            <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Faturamento Total</th>
+                            <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('name')}>Produto / Categoria {getSortIcon('name')}</th>
+                            <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('volume')}>Volume de Vendas {getSortIcon('volume')}</th>
+                            <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('faturamento')}>Faturamento Total {getSortIcon('faturamento')}</th>
                           </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-slate-900 divide-y divide-slate-200 dark:divide-slate-800">
                           {filteredProductScatterStats.filter(p => p.totalCost === 0).length > 0 ? (
-                            filteredProductScatterStats
-                              .filter(p => p.totalCost === 0)
-                              .sort((a,b) => b.volume - a.volume)
+                            applySort(filteredProductScatterStats.filter(p => p.totalCost === 0), (a,b) => b.volume - a.volume)
                               .map(p => (
                               <tr key={p.name} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                                 <td className="px-6 py-4 text-sm font-medium text-slate-900 dark:text-slate-100">
@@ -2172,17 +2203,17 @@ export default function App() {
                         <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
                           <thead className="bg-slate-50 dark:bg-slate-950">
                             <tr>
-                              <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Produto</th>
-                              <th className="px-6 py-4 text-center text-xs font-semibold text-orange-600 dark:text-orange-400 uppercase tracking-wider bg-orange-50/50 dark:bg-orange-900/10">Frentes Ocupadas</th>
-                              <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Volume Total</th>
-                              <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Densidade (R$)</th>
-                              <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Tx. Destino</th>
-                              <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Cluster Atribuído</th>
-                              <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Ação Recomendada</th>
+                              <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('produto')}>Produto {getSortIcon('produto')}</th>
+                              <th className="px-6 py-4 text-center text-xs font-semibold text-orange-600 dark:text-orange-400 uppercase tracking-wider bg-orange-50/50 dark:bg-orange-900/10 cursor-pointer hover:bg-orange-100 transition-colors" onClick={() => handleSort('frentes')}>Frentes Ocupadas {getSortIcon('frentes')}</th>
+                              <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('volumeTotal')}>Volume Total {getSortIcon('volumeTotal')}</th>
+                              <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('densidadeLucro')}>Densidade (R$) {getSortIcon('densidadeLucro')}</th>
+                              <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('taxaDestino')}>Tx. Destino {getSortIcon('taxaDestino')}</th>
+                              <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('cluster')}>Cluster Atribuído {getSortIcon('cluster')}</th>
+                              <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('acao')}>Ação Recomendada {getSortIcon('acao')}</th>
                             </tr>
                           </thead>
                           <tbody className="bg-white dark:bg-slate-900 divide-y divide-slate-200 dark:divide-slate-800">
-                            {[...actionPlanData].sort((a,b) => b.volumeTotal - a.volumeTotal).map((row, idx) => {
+                            {applySort(actionPlanData, (a,b) => b.volumeTotal - a.volumeTotal).map((row, idx) => {
                               return (
                                 <tr key={row.produto} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                                   <td className="px-6 py-4 text-sm font-medium text-slate-900 dark:text-slate-100">{row.produto}</td>

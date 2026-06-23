@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
-import { UploadCloud, FileSpreadsheet, Download, Search, CheckSquare, Square, EyeOff, RotateCcw } from 'lucide-react';
+import { UploadCloud, FileSpreadsheet, Download, Search, CheckSquare, Square, EyeOff, RotateCcw, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { cn } from '../utils';
 
 interface Product {
@@ -54,6 +54,39 @@ export function PosEstocagem() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [mappingInfo, setMappingInfo] = useState<MappingInfo | null>(null);
   const [ignoredItems, setIgnoredItems] = useState<Set<string>>(new Set());
+
+  const [sortConfig, setSortConfig] = useState<{ key: keyof MissingProductRow, direction: 'asc' | 'desc' } | null>(null);
+
+  const handleSort = (key: keyof MissingProductRow) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const getSortIcon = (key: string) => {
+    if (!sortConfig || sortConfig.key !== key) {
+      return <ArrowUpDown className="w-3 h-3 ml-1 inline-block text-slate-400" />;
+    }
+    if (sortConfig.direction === 'asc') {
+      return <ArrowUp className="w-3 h-3 ml-1 inline-block text-orange-600 dark:text-orange-400" />;
+    }
+    return <ArrowDown className="w-3 h-3 ml-1 inline-block text-orange-600 dark:text-orange-400" />;
+  };
+
+  const applySort = (data: MissingProductRow[]): MissingProductRow[] => {
+    if (!sortConfig) return data;
+    return [...data].sort((a: any, b: any) => {
+      const aVal = a[sortConfig.key];
+      const bVal = b[sortConfig.key];
+      if (aVal === null || aVal === undefined) return sortConfig.direction === 'asc' ? 1 : -1;
+      if (bVal === null || bVal === undefined) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  };
 
   const handleProdutosUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -481,13 +514,13 @@ export function PosEstocagem() {
               <table className="w-full text-left border-collapse text-sm">
                 <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 sticky top-0 z-10 shadow-sm ring-1 ring-slate-200 dark:ring-slate-800">
                   <tr>
-                    <th className="px-4 py-3 font-semibold">Mercado</th>
-                    <th className="px-4 py-3 font-semibold">Código</th>
-                    <th className="px-4 py-3 font-semibold w-1/4">Produto</th>
-                    <th className="px-4 py-3 font-semibold text-right">Preço Custo</th>
-                    <th className="px-4 py-3 font-semibold text-right text-slate-900 dark:text-white bg-slate-200/50 dark:bg-slate-700/50">Preço Sugerido</th>
-                    <th className="px-4 py-3 font-semibold text-right">Mgm (20%)</th>
-                    <th className="px-4 py-3 font-semibold text-right">Mgm (27%)</th>
+                    <th className="px-4 py-3 font-semibold cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" onClick={() => handleSort('mercado')}>Mercado {getSortIcon('mercado')}</th>
+                    <th className="px-4 py-3 font-semibold cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" onClick={() => handleSort('codigo')}>Código {getSortIcon('codigo')}</th>
+                    <th className="px-4 py-3 font-semibold w-1/4 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" onClick={() => handleSort('produto')}>Produto {getSortIcon('produto')}</th>
+                    <th className="px-4 py-3 font-semibold text-right cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" onClick={() => handleSort('precoCusto')}>Preço Custo {getSortIcon('precoCusto')}</th>
+                    <th className="px-4 py-3 font-semibold text-right text-slate-900 dark:text-white bg-slate-200/50 dark:bg-slate-700/50 cursor-pointer hover:bg-slate-300/50 dark:hover:bg-slate-600/50 transition-colors" onClick={() => handleSort('precoSugerido')}>Preço Sugerido {getSortIcon('precoSugerido')}</th>
+                    <th className="px-4 py-3 font-semibold text-right cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" onClick={() => handleSort('margem20')}>Mgm (20%) {getSortIcon('margem20')}</th>
+                    <th className="px-4 py-3 font-semibold text-right cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" onClick={() => handleSort('margem27')}>Mgm (27%) {getSortIcon('margem27')}</th>
                     <th className="px-4 py-3 font-semibold text-center w-12"></th>
                   </tr>
                 </thead>
@@ -499,7 +532,7 @@ export function PosEstocagem() {
                       </td>
                     </tr>
                   ) : (
-                    visibleProducts.map((row, idx) => (
+                    applySort(visibleProducts).map((row, idx) => (
                       <tr key={idx} className="bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                         <td className="px-4 py-2 font-medium text-slate-800 dark:text-slate-200 border-x border-slate-100 dark:border-slate-800">{row.mercado}</td>
                         <td className="px-4 py-2 text-slate-500 dark:text-slate-400 font-mono text-xs border-r border-slate-100 dark:border-slate-800">{row.codigo}</td>

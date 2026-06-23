@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { AlertCircle, CheckCircle, HelpCircle, Play, RefreshCw, Loader2, Download, Calendar, ShieldAlert } from 'lucide-react';
+import { AlertCircle, CheckCircle, HelpCircle, Play, RefreshCw, Loader2, Download, Calendar, ShieldAlert, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import type { MappedRow } from '../types';
 
 interface AuditoriaVMPayProps {
@@ -29,6 +29,39 @@ export default function AuditoriaVMPay({ rawData, onRefreshData }: AuditoriaVMPa
   const [auditDays, setAuditDays] = useState<ProcessedDay[]>([]);
   const [currentCheckingDay, setCurrentCheckingDay] = useState<string>('');
   const [logs, setLogs] = useState<string[]>([]);
+
+  const [sortConfig, setSortConfig] = useState<{ key: keyof ProcessedDay, direction: 'asc' | 'desc' } | null>(null);
+
+  const handleSort = (key: keyof ProcessedDay) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const getSortIcon = (key: string) => {
+    if (!sortConfig || sortConfig.key !== key) {
+      return <ArrowUpDown className="w-3 h-3 ml-1 inline-block text-slate-400" />;
+    }
+    if (sortConfig.direction === 'asc') {
+      return <ArrowUp className="w-3 h-3 ml-1 inline-block text-orange-600 dark:text-orange-400" />;
+    }
+    return <ArrowDown className="w-3 h-3 ml-1 inline-block text-orange-600 dark:text-orange-400" />;
+  };
+
+  const applySort = (data: ProcessedDay[]): ProcessedDay[] => {
+    if (!sortConfig) return data;
+    return [...data].sort((a: any, b: any) => {
+      const aVal = a[sortConfig.key];
+      const bVal = b[sortConfig.key];
+      if (aVal === null || aVal === undefined) return sortConfig.direction === 'asc' ? 1 : -1;
+      if (bVal === null || bVal === undefined) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  };
 
   const addLog = (msg: string) => {
     const timestamp = new Date().toLocaleTimeString('pt-BR');
@@ -386,15 +419,15 @@ export default function AuditoriaVMPay({ rawData, onRefreshData }: AuditoriaVMPa
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 dark:bg-slate-850 text-xs font-semibold text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-850">
-                  <th className="p-4">Dia</th>
-                  <th className="p-4">Qtd. Firestore Banco</th>
-                  <th className="p-4">Qtd. VMPay API</th>
-                  <th className="p-4">Situação</th>
+                  <th className="p-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('dateStr')}>Dia {getSortIcon('dateStr')}</th>
+                  <th className="p-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('dbCount')}>Qtd. Firestore Banco {getSortIcon('dbCount')}</th>
+                  <th className="p-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('apiCount')}>Qtd. VMPay API {getSortIcon('apiCount')}</th>
+                  <th className="p-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => handleSort('status')}>Situação {getSortIcon('status')}</th>
                   <th className="p-4 text-right">Ação Corretiva</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 dark:divide-slate-800/40 text-sm">
-                {auditDays.map(day => {
+                {applySort(auditDays).map(day => {
                   let badge = null;
                   if (day.status === 'pending') {
                     badge = <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"><HelpCircle className="w-3.5 h-3.5" /> Pendente</span>;
