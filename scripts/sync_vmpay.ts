@@ -277,7 +277,7 @@ async function syncCashlessFacts() {
 
   while(currentStart < endLimit) {
     let currentEnd = new Date(currentStart);
-    currentEnd.setDate(currentEnd.getDate() + 30);
+    currentEnd.setDate(currentEnd.getDate() + 10);
     if (currentEnd > endLimit) {
       currentEnd = endLimit;
     }
@@ -347,7 +347,7 @@ async function syncInventoryMovements() {
 
   while(currentStart < endLimit) {
     let currentEnd = new Date(currentStart);
-    currentEnd.setDate(currentEnd.getDate() + 30);
+    currentEnd.setDate(currentEnd.getDate() + 10);
     if (currentEnd > endLimit) {
       currentEnd = endLimit;
     }
