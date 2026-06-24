@@ -379,7 +379,7 @@ async function syncInventoryMovements() {
         produtoId: m.good?.id,
         produto: m.good?.display_name != null ? String(m.good?.display_name) : null,
         fornecedor: m.provider?.name != null ? String(m.provider?.name) : null,
-        operacaoTipo: m.nature_operation != null ? String(m.nature_operation) : null,
+        operacaoTipo: m.originator_type != null ? String(m.originator_type) : null,
         precoCusto: m.cost_price,
       }));
 
@@ -390,8 +390,18 @@ async function syncInventoryMovements() {
           .values(uniqueRows as any)
           .onConflictDoUpdate({
             target: fatoMovimentos.movimentoId,
-            set: { saldoFinal: sql`EXCLUDED.saldo_final` },
-            where: sql`"fato_movimentos".saldo_final IS DISTINCT FROM EXCLUDED.saldo_final`
+            set: { 
+              saldoFinal: sql`EXCLUDED.saldo_final`,
+              fornecedor: sql`EXCLUDED.fornecedor`,
+              operacaoTipo: sql`EXCLUDED.operacao_tipo`,
+              precoCusto: sql`EXCLUDED.preco_custo`
+            },
+            where: sql`
+              "fato_movimentos".saldo_final IS DISTINCT FROM EXCLUDED.saldo_final OR
+              "fato_movimentos".fornecedor IS DISTINCT FROM EXCLUDED.fornecedor OR
+              "fato_movimentos".operacao_tipo IS DISTINCT FROM EXCLUDED.operacao_tipo OR
+              "fato_movimentos".preco_custo IS DISTINCT FROM EXCLUDED.preco_custo
+            `
           });
         count += uniqueRows.length;
       }
