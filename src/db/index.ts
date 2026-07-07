@@ -1,7 +1,7 @@
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
-import * as schema from './schema.js';
-import * as dotenv from 'dotenv';
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
+import * as schema from "./schema.js";
+import * as dotenv from "dotenv";
 
 dotenv.config();
 
@@ -16,8 +16,8 @@ export const createPool = () => {
 
 const pool = createPool();
 
-pool.on('error', (err) => {
-  console.error('Unexpected error on idle SQL pool client:', err);
+pool.on("error", (err) => {
+  console.error("Unexpected error on idle SQL pool client:", err);
 });
 
 export const db = drizzle(pool, { schema });

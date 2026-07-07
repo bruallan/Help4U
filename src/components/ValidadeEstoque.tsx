@@ -12,7 +12,7 @@ import {
   Camera,
 } from "lucide-react";
 import { cn } from "../utils";
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5QrcodeScanner } from "html5-qrcode";
 
 const API_BASE = (import.meta as any).env?.VITE_API_URL || "";
 
@@ -50,29 +50,36 @@ export default function ValidadeEstoque({ rawData }: ValidadeEstoqueProps) {
 
   useEffect(() => {
     if (isScanning) {
-      const scanner = new Html5QrcodeScanner("reader", { qrbox: { width: 250, height: 250 }, fps: 5 }, false);
-      scanner.render(async (decodedText) => {
-        scanner.clear();
-        setIsScanning(false);
-        try {
-          const res = await fetch(`${API_BASE}/api/barcode/${decodedText}`);
-          if (res.ok) {
-            const data = await res.json();
-            setModalProduto(data.produto);
-            setShowDropdown(false);
-          } else {
-            alert("Produto não encontrado para este código de barras.");
+      const scanner = new Html5QrcodeScanner(
+        "reader",
+        { qrbox: { width: 250, height: 250 }, fps: 5 },
+        false,
+      );
+      scanner.render(
+        async (decodedText) => {
+          scanner.clear();
+          setIsScanning(false);
+          try {
+            const res = await fetch(`${API_BASE}/api/barcode/${decodedText}`);
+            if (res.ok) {
+              const data = await res.json();
+              setModalProduto(data.produto);
+              setShowDropdown(false);
+            } else {
+              alert("Produto não encontrado para este código de barras.");
+            }
+          } catch (e) {
+            console.error(e);
+            alert("Erro ao buscar produto.");
           }
-        } catch(e) {
-          console.error(e);
-          alert("Erro ao buscar produto.");
-        }
-      }, (err) => {
-        // ignore
-      });
+        },
+        (err) => {
+          // ignore
+        },
+      );
 
       return () => {
-        scanner.clear().catch(e => console.error(e));
+        scanner.clear().catch((e) => console.error(e));
       };
     }
   }, [isScanning]);
@@ -691,9 +698,9 @@ export default function ValidadeEstoque({ rawData }: ValidadeEstoqueProps) {
                     className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-lg focus:ring-purple-500 focus:border-purple-500 block p-2.5 dark:bg-slate-950 dark:border-slate-800 dark:text-white"
                     placeholder="Digite para buscar um produto..."
                   />
-                  <button 
-                    type="button" 
-                    onClick={() => setIsScanning(!isScanning)} 
+                  <button
+                    type="button"
+                    onClick={() => setIsScanning(!isScanning)}
                     className="p-2.5 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors flex-shrink-0"
                     title="Escanear Código de Barras"
                   >
@@ -701,7 +708,10 @@ export default function ValidadeEstoque({ rawData }: ValidadeEstoqueProps) {
                   </button>
                 </div>
                 {isScanning && (
-                  <div id="reader" className="w-full mt-2 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800"></div>
+                  <div
+                    id="reader"
+                    className="w-full mt-2 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800"
+                  ></div>
                 )}
                 {showDropdown && (
                   <div className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-lg max-h-60 overflow-y-auto">

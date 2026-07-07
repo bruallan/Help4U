@@ -27,8 +27,14 @@ jobs:
       - name: Iniciar Sincronização
         env:
           VMPAY_API_KEY: ${{ secrets.VMPAY_API_KEY }}
-          SMTP_EMAIL: ${{ secrets.SMTP_EMAIL }}
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
         run: |
           # Usamos npx tsx para rodar o arquivo TypeScript direto no terminal da Action!
           npx tsx scripts/sync_vmpay.ts
+
+      - name: Rodar Rotinas Diárias
+        env:
+          VMPAY_API_KEY: ${{ secrets.VMPAY_API_KEY }}
+          SMTP_EMAIL: ${{ secrets.SMTP_EMAIL }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        run: |
+          npx tsx scripts/daily_routines.ts
