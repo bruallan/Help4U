@@ -99,4 +99,5 @@ export const lotesEstoque = pgTable("lotes_estoque", {
   produto: text("produto"),
   dataValidade: timestamp("data_validade"),
   quantidadeAtual: integer("quantidade_atual"),
+  instalacaoId: integer("instalacao_id"), // null = Depósito, otherwise Mercado
 });

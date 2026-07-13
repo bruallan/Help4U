@@ -133,8 +133,9 @@ export function GestaoValidade({
           await html5QrCode.start(
             { facingMode: "environment" },
             {
-              fps: 10,
-              qrbox: { width: 250, height: 150 },
+              fps: 30,
+              disableFlip: false,
+              qrbox: { width: 300, height: 150 },
               formatsToSupport: [
                 Html5QrcodeSupportedFormats.EAN_13,
                 Html5QrcodeSupportedFormats.EAN_8,
