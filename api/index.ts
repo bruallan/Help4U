@@ -88,14 +88,15 @@ app.get("/api/lotes", async (req, res) => {
 
 app.post("/api/lotes", async (req, res) => {
   try {
-    const { produtoId, produto, dataValidade, quantidadeAtual } = req.body;
+    const { produtoId, produto, dataValidade, quantidadeAtual, status } = req.body;
     const [newLote] = await db
       .insert(lotesEstoque)
       .values({
         produtoId: produtoId ? parseInt(produtoId, 10) : null,
         produto,
-        dataValidade: new Date(dataValidade),
-        quantidadeAtual: parseInt(quantidadeAtual, 10),
+        dataValidade: dataValidade ? new Date(dataValidade) : null,
+        quantidadeAtual: quantidadeAtual ? parseInt(quantidadeAtual, 10) : null,
+        status: status || 'consolidado',
       })
       .returning();
     res.json(newLote);
@@ -226,6 +227,36 @@ async function fetchWithRetry(
   }
   throw lastError || new Error("Fetch failed after maximum retries");
 }
+
+
+app.get("/api/vmpay/entradas", async (req, res) => {
+  try {
+    const ACCESS_TOKEN = process.env.VMPAY_API_KEY;
+    if (!ACCESS_TOKEN) return res.status(401).json({ error: "Missing VMPAY_API_KEY" });
+
+    // Pega as entradas dos últimos X dias (ex: 7 dias)
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - 7);
+
+    const qs = new URLSearchParams({
+      access_token: ACCESS_TOKEN,
+      page: "1",
+      per_page: "50",
+      kind: "StorableEntry",
+      occurred_at_start: start.toISOString(),
+      occurred_at_end: end.toISOString()
+    });
+
+    const vmpayRes = await fetch(`https://vmpay.vertitecnologia.com.br/api/v1/distribution_center_inventories?${qs}`);
+    if (!vmpayRes.ok) throw new Error("Failed to fetch from VMPay");
+    
+    const data = await vmpayRes.json();
+    res.json(data);
+  } catch(e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // --- Proxy Endpoints to avoid CORS limits and hide VMPAY API KEY ---
 
@@ -609,12 +640,14 @@ app.post("/api/fefo/vendas", async (req, res) => {
 // Editar Lote
 app.put("/api/lotes/:id", async (req, res) => {
   try {
-    const { quantidadeAtual, dataValidade } = req.body;
+    const { quantidadeAtual, dataValidade, status } = req.body;
+    const updateData: any = {};
+    if (quantidadeAtual !== undefined) updateData.quantidadeAtual = quantidadeAtual === null ? null : parseInt(quantidadeAtual, 10);
+    if (dataValidade !== undefined) updateData.dataValidade = dataValidade ? new Date(dataValidade) : null;
+    if (status !== undefined) updateData.status = status;
+
     const result = await db.update(lotesEstoque)
-      .set({ 
-        quantidadeAtual: parseInt(quantidadeAtual, 10),
-        dataValidade: new Date(dataValidade)
-      })
+      .set(updateData)
       .where(eq(lotesEstoque.idLote, parseInt(req.params.id, 10)))
       .returning();
     res.json(result);

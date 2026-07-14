@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { MappedRow } from "../types";
-
+import { MappedRow pes";
 import {
   AlertCircle,
   Search,
@@ -60,7 +59,6 @@ export default function ValidadeEstoque({ rawData }: ValidadeEstoqueProps) {
   const [modalDataValidade, setModalDataValidade] = useState("");
   const [modalQuantidade, setModalQuantidade] = useState("");
   const [isScanning, setIsScanning] = useState(false);
-  const [isScanningSearch, setIsScanningSearch] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
   const [activeTab, setActiveTab] = useState<"geral" | "recebimento">("geral");
   const [editingLoteProduto, setEditingLoteProduto] = useState<string | null>(null);
@@ -72,28 +70,6 @@ export default function ValidadeEstoque({ rawData }: ValidadeEstoqueProps) {
   const [inboundData, setInboundData] = useState<{produto: string, produtoId: number, qty: number} | null>(null);
   const [inboundDate, setInboundDate] = useState("");
 
-
-  useEffect(() => {
-    let html5QrCodeSearch: any;
-    if (isScanningSearch) {
-      html5QrCodeSearch = new Html5Qrcode("reader-search");
-      html5QrCodeSearch.start(
-        { facingMode: "environment" },
-        { fps: 30, qrbox: { width: 300, height: 150 } },
-        (decodedText: string) => {
-           if (html5QrCodeSearch.isScanning) html5QrCodeSearch.stop();
-           setIsScanningSearch(false);
-           setSearchSku(decodedText);
-        },
-        (err: any) => {}
-      ).catch(console.error);
-    }
-    return () => {
-      if (html5QrCodeSearch && html5QrCodeSearch.isScanning) {
-        html5QrCodeSearch.stop().catch(console.error);
-      }
-    };
-  }, [isScanningSearch]);
 
   useEffect(() => {
     let html5QrCode;
@@ -688,54 +664,22 @@ export default function ValidadeEstoque({ rawData }: ValidadeEstoqueProps) {
           <h3 className="text-lg font-bold text-slate-900 dark:text-white [color-scheme:light_dark]">
             Análise Preditiva de Validade
           </h3>
-          
-          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <div className="relative w-full sm:w-64">
-                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                  <Search className="w-4 h-4 text-slate-400" />
-                </div>
-                <input
-                  type="text"
-                  value={searchSku}
-                  onChange={(e) => setSearchSku(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-lg focus:ring-purple-500 focus:border-purple-500 block w-full pl-10 p-2.5 dark:bg-slate-950 dark:border-slate-800 dark:text-white [color-scheme:light_dark]"
-                  placeholder="Filtrar produto..."
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsScanningSearch(!isScanningSearch)}
-                className="p-2.5 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors flex-shrink-0"
-                title="Escanear Código de Barras para Filtrar"
-              >
-                <Camera className="w-5 h-5" />
-              </button>
+          <div className="relative w-full sm:w-64">
+            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+              <Search className="w-4 h-4 text-slate-400" />
             </div>
+            <input
+              type="text"
+              value={searchSku}
+              onChange={(e) => setSearchSku(e.target.value)}
+              className="bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-lg focus:ring-purple-500 focus:border-purple-500 block w-full pl-10 p-2.5 dark:bg-slate-950 dark:border-slate-800 dark:text-white [color-scheme:light_dark]"
+              placeholder="Filtrar produto..."
+            />
           </div>
         </div>
 
-        {isScanningSearch && (
-          <div className="mb-6 bg-slate-50 dark:bg-slate-800/30 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Escanear para Filtrar</h4>
-              <button onClick={() => setIsScanningSearch(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div
-              id="reader-search"
-              className="w-full bg-slate-100 dark:bg-slate-800 rounded-lg overflow-hidden min-h-[200px] flex items-center justify-center mb-2"
-            >
-              <span className="text-slate-400 text-sm">Carregando câmera...</span>
-            </div>
-            <p className="text-xs text-center text-slate-500 dark:text-slate-400">
-              Aproxime o código de barras da câmera. A iluminação e o foco podem afetar a velocidade.
-            </p>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {tableData.length === 0 && (
             <div className="col-span-full py-8 text-center text-slate-500">
               Nenhum lote cadastrado.
