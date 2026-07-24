@@ -26,4 +26,5 @@ jobs:
       - name: Executar rotina de produtos faltantes
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          VMPAY_API_KEY: ${{ secrets.VMPAY_API_KEY }}
         run: npx tsx scripts/fill_planograms.ts
