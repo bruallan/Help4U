@@ -1,7 +1,8 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import apiApp from "./api/index.js"; 
+import apiApp from "./api/index.js";
+ 
 
 async function startServer() {
   const app = express();
@@ -25,6 +26,8 @@ async function startServer() {
     });
   }
 
+  
+  
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });

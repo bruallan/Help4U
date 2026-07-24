@@ -272,7 +272,8 @@ async function syncCashlessFacts() {
   log("Syncing Cashless Facts (desde 01/01/2026)...");
   
   const endLimit = new Date();
-  let currentStart = new Date('2026-01-01T00:00:00Z');
+  const latestFact = await db.select({ date: fatoVendas.dataVenda }).from(fatoVendas).orderBy(sql`data_venda DESC`).limit(1);
+  let currentStart = latestFact.length > 0 ? new Date(latestFact[0].date) : new Date('2026-01-01T00:00:00Z');
   let count = 0;
 
   while(currentStart < endLimit) {
@@ -342,7 +343,8 @@ async function syncInventoryMovements() {
   log("Syncing Movimentos (desde 01/01/2026)...");
   
   const endLimit = new Date();
-  let currentStart = new Date('2026-01-01T00:00:00Z');
+  const latestMov = await db.select({ date: fatoMovimentos.movimentoData }).from(fatoMovimentos).orderBy(sql`movimento_data DESC`).limit(1);
+  let currentStart = latestMov.length > 0 ? new Date(latestMov[0].date) : new Date('2026-01-01T00:00:00Z');
   let count = 0;
 
   while(currentStart < endLimit) {

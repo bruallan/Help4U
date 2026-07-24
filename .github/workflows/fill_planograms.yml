@@ -1,0 +1,29 @@
+name: Automation - Preenchimento de Planogramas
+
+on:
+  schedule:
+    # Executa todos os dias às 03h00 UTC (00h00 BRT)
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  fill_planograms:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Código
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar Dependências
+        run: npm ci
+
+      - name: Executar rotina de produtos faltantes
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npx tsx scripts/fill_planograms.ts
