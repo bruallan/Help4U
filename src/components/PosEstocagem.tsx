@@ -74,6 +74,25 @@ export function PosEstocagem() {
     direction: "asc" | "desc";
   } | null>(null);
 
+  const [isSyncingAPI, setIsSyncingAPI] = useState(false);
+
+  const handleSyncVMPay = async () => {
+    setIsSyncingAPI(true);
+    try {
+      const res = await fetch(`/api/planogramas/add-missing`, { method: "POST" });
+      if (!res.ok) {
+        throw new Error("Erro na comunicação com a API.");
+      }
+      const data = await res.json();
+      alert(`Processo concluído!\n\n${data.message}`);
+    } catch (error) {
+      console.error(error);
+      alert("Falha ao processar a inclusão de produtos via API.");
+    } finally {
+      setIsSyncingAPI(false);
+    }
+  };
+
   const handleSort = (key: keyof MissingProductRow) => {
     let direction: "asc" | "desc" = "asc";
     if (
@@ -492,7 +511,24 @@ export function PosEstocagem() {
           </div>
         </div>
 
-        <div className="mt-8 flex justify-end">
+        <div className="mt-8 flex justify-between items-center flex-wrap gap-4">
+          <div>
+            <button
+              onClick={handleSyncVMPay}
+              disabled={isSyncingAPI}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:dark:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-xl font-medium shadow-sm transition-all flex items-center gap-2"
+              title="Aciona a API para descobrir produtos faltantes via VMPay e adicioná-los automaticamente"
+            >
+              {isSyncingAPI ? (
+                <>Sincronizando com VMPay...</>
+              ) : (
+                <>
+                  <RotateCcw size={18} />
+                  Preencher Planogramas (VMPay API)
+                </>
+              )}
+            </button>
+          </div>
           <button
             onClick={parseExcelFiles}
             disabled={!produtosFile || !planogramasFile || isProcessing}

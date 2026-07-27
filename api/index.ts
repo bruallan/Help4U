@@ -751,6 +751,16 @@ app.post("/api/sync/db-to-vmpay", async (req, res) => {
 // Cron Job Route para atualizar validades e reduzir estoques velhos diariamente
 
 // Cron Job Route para inserir todos os produtos faltantes nos planogramas
+app.post("/api/planogramas/add-missing", (req, res) => {
+  exec("npx tsx scripts/fill_planograms.ts", (error, stdout, stderr) => {
+    if (error) {
+      console.error(`Erro ao executar script: ${error}`);
+      return res.status(500).json({ error: error.message, stderr });
+    }
+    res.json({ message: "Produtos adicionados aos planogramas com sucesso", stdout, stderr });
+  });
+});
+
 app.post("/api/cron/fill-planograms", (req, res) => {
   exec("tsx scripts/fill_planograms.ts", (error, stdout, stderr) => {
     if (error) {

@@ -1,7 +1,6 @@
 import * as dotenv from 'dotenv';
 import { db } from '../src/db/index.js';
 import { dimPlanogramas } from '../src/db/schema.js';
-import { sql } from 'drizzle-orm';
 
 dotenv.config();
 
@@ -29,13 +28,9 @@ async function fetchApi(endpoint: string, params: Record<string, any> = {}) {
   while (retries < 3) {
     try {
       const res = await fetch(url.toString(), {
-        headers: {
-          'Accept': 'application/json',
-        }
+        headers: { 'Accept': 'application/json' }
       });
-      if (!res.ok) {
-        throw new Error(`HTTP Error ${res.status} on ${endpoint}`);
-      }
+      if (!res.ok) throw new Error(`HTTP Error ${res.status} on ${endpoint}`);
       return await res.json();
     } catch(e: any) {
       retries++;
@@ -46,8 +41,33 @@ async function fetchApi(endpoint: string, params: Record<string, any> = {}) {
   throw new Error(`Failed to fetch ${endpoint} after 3 retries.`);
 }
 
+async function patchApi(endpoint: string, body: any) {
+  const url = new URL(`${BASE_URL}/api/v1${endpoint}`);
+  url.searchParams.append('access_token', VMPAY_API_KEY as string);
+  let retries = 0;
+  while (retries < 3) {
+    try {
+      const res = await fetch(url.toString(), {
+        method: 'PATCH',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`HTTP ${res.status}: ${errorText}`);
+      }
+      return await res.json();
+    } catch(e: any) {
+      retries++;
+      log(`PATCH Error on ${endpoint}: ${e.message}. Retrying ${retries}/3...`);
+      await wait(1000 * retries);
+    }
+  }
+  throw new Error(`Failed to patch ${endpoint} after 3 retries.`);
+}
+
 async function fillPlanograms() {
-  log("Starting fill planograms script...");
+  log("Starting fill planograms script (VMPay API Sync)...");
   if (!VMPAY_API_KEY) {
     throw new Error('VMPAY_API_KEY env missing');
   }
@@ -64,9 +84,9 @@ async function fillPlanograms() {
     page++;
     await wait(300);
   }
-  log(`Total de produtos baixados do VMPay: ${allProducts.length}`);
+  log(`Total de produtos baixados: ${allProducts.length}`);
 
-  log("Baixando lista de todas as máquinas e instalações do VMPay...");
+  log("Baixando lista de máquinas e instalações do VMPay...");
   page = 1;
   hasMore = true;
   const allMachines: any[] = [];
@@ -80,90 +100,92 @@ async function fillPlanograms() {
   }
   log(`Total de máquinas baixadas: ${allMachines.length}`);
 
-  log("Baixando planogramas para cada instalação...");
-  const planMap = new Map<number, Set<number>>();
-  const instalacaoPlanIdMap = new Map<number, number>();
-  const instalacaoNameMap = new Map<number, string>();
+  let addedCount = 0;
   
   for (const m of allMachines) {
     if (m.installation?.id) {
+      const instName = m.installation.place || "Desconhecida";
+      log(`Processando Instalação ${instName} (${m.installation.id})...`);
+      
       try {
         const detail = await fetchApi(`/machines/${m.id}/installations/${m.installation.id}`);
-        if (detail.current_planogram && detail.current_planogram.items) {
-          const instId = detail.id;
-          instalacaoNameMap.set(instId, detail.place != null ? String(detail.place) : "Desconhecida");
-          instalacaoPlanIdMap.set(instId, detail.current_planogram.id);
-          
-          if (!planMap.has(instId)) planMap.set(instId, new Set());
-          
-          for (const item of detail.current_planogram.items) {
-            if (item.good?.id) {
-              planMap.get(instId)!.add(item.good.id);
+        const currentPlanogram = detail.current_planogram;
+        
+        if (!currentPlanogram || !currentPlanogram.items) {
+          log(`  Nenhum planograma atual encontrado para ${instName}`);
+          continue;
+        }
+
+        const existingProductIds = new Set<number>();
+        let maxLogicalLocator = 0;
+
+        for (const item of currentPlanogram.items) {
+          if (item.good?.id) {
+            existingProductIds.add(item.good.id);
+          }
+          const ll = parseInt(item.logical_locator, 10);
+          if (!isNaN(ll) && ll > maxLogicalLocator) maxLogicalLocator = ll;
+        }
+        
+        const itemsToPatch = [];
+        for (const produto of allProducts) {
+          if (!existingProductIds.has(produto.id)) {
+            maxLogicalLocator++;
+            
+            const itemObj: any = {
+              type: "Coil",
+              good_id: produto.id,
+              name: maxLogicalLocator.toString(),
+              capacity: 1000,
+              par_level: 6,
+              alert_level: 4,
+              minimum_level: 4,
+              use_minimum_level: true,
+              logical_locator: maxLogicalLocator.toString(),
+              status: "active"
+            };
+
+            if (produto.default_price !== null && produto.default_price !== undefined) {
+              itemObj.use_default_price_product = true;
+            } else {
+              const cost = produto.cost_price || 0;
+              const exactSuggestedPrice = cost / 0.58;
+              const suggestedPrice = Math.max(0, parseFloat((Math.ceil(exactSuggestedPrice * 10) / 10 - 0.01).toFixed(2)));
+              itemObj.desired_price = suggestedPrice;
+              itemObj.use_default_price_product = false;
             }
+
+            itemsToPatch.push(itemObj);
+            addedCount++;
           }
         }
-      } catch (e) {
-         log(`Falha ao obter planograma da instalação ${m.installation.id}`);
+
+        if (itemsToPatch.length > 0) {
+          log(`  Enviando ${itemsToPatch.length} produtos faltantes para a API VMPay em ${instName}...`);
+          
+          // Enviar em blocos de 100 para evitar payload gigante ou limite da API
+          const chunkSize = 100;
+          for (let i = 0; i < itemsToPatch.length; i += chunkSize) {
+            const chunk = itemsToPatch.slice(i, i + chunkSize);
+            await patchApi(`/machines/${m.id}/installations/${m.installation.id}/current_planogram`, {
+              planogram: {
+                items_attributes: chunk
+              }
+            });
+            log(`    Enviado lote de ${chunk.length} produtos.`);
+          }
+        } else {
+          log(`  Nenhum produto faltante em ${instName}.`);
+        }
+      } catch (e: any) {
+         log(`Falha ao processar planograma da instalação ${m.installation.id}: ${e.message}`);
       }
       await wait(300);
     }
   }
-  
-  log("Analisando quais produtos faltam em cada planograma...");
-  const existingPlanogramas = await db.select().from(dimPlanogramas);
-  let maxPlanItemId = existingPlanogramas.length > 0 ? Math.max(...existingPlanogramas.map(p => p.planItemId)) : 100000;
-  
-  const newRows: any[] = [];
-  let addedCount = 0;
 
-  for (const [instId, existingProductIds] of planMap.entries()) {
-    const instName = instalacaoNameMap.get(instId) || "Desconhecida";
-    const planId = instalacaoPlanIdMap.get(instId) || 0;
-    let addedForThisInst = 0;
-    
-    for (const produto of allProducts) {
-      if (!existingProductIds.has(produto.id)) {
-        maxPlanItemId++;
-        const cost = produto.cost_price || 0;
-        const exactSuggestedPrice = cost / 0.58;
-        const suggestedPrice = Math.max(0, parseFloat((Math.ceil(exactSuggestedPrice * 10) / 10 - 0.01).toFixed(2)));
-
-        newRows.push({
-          planItemId: maxPlanItemId,
-          instalacaoId: instId,
-          instalacao: instName,
-          planId: planId,
-          idProduto: produto.id,
-          produto: produto.name != null ? String(produto.name) : null,
-          saldo: 0,
-          nivelPar: 10,
-          nivelAlerta: 3,
-          usarNivelMinimo: false,
-          nivelMinimo: 0,
-          preco: suggestedPrice,
-          usaPrecoPadrao: false,
-          precoPromocao: 0,
-          status: 'ativo',
-        });
-        addedCount++;
-        addedForThisInst++;
-      }
-    }
-    log(`Instalação ${instName} (${instId}): Faltam ${addedForThisInst} produtos.`);
-  }
-
-  log(`Total de itens faltantes a serem inseridos no banco local: ${addedCount}`);
-  
-  if (newRows.length > 0) {
-    for (let i = 0; i < newRows.length; i += 1000) {
-      const chunk = newRows.slice(i, i + 1000);
-      await db.insert(dimPlanogramas)
-        .values(chunk)
-        .onConflictDoNothing();
-    }
-  }
-
-  log(`Processo finalizado com sucesso!`);
+  log(`Processo finalizado com sucesso! Total de itens enviados à API VMPay: ${addedCount}`);
+  log("Os planogramas no banco de dados local serão atualizados automaticamente na próxima execução da rotina 'sync_vmpay'.");
   process.exit(0);
 }
 
