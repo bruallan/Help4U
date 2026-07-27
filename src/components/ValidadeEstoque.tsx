@@ -1003,7 +1003,7 @@ export default function ValidadeEstoque({ rawData }: ValidadeEstoqueProps) {
                                    <button onClick={() => setEditLoteId(null)} className="p-1.5 bg-slate-100 text-slate-700 rounded hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"><X className="w-4 h-4"/></button>
                                 </div>
                               ) : (
-                                <button onClick={() => { setEditLoteId(lote.idLote); setEditLoteQty(lote.quantidadeAtual.toString()); setEditLoteDate(lote.dataValidade.split('T')[0]); }} className="p-1.5 bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 rounded hover:bg-slate-200 dark:hover:bg-slate-700">
+                                <button onClick={() => { setEditLoteId(lote.idLote); setEditLoteQty(lote.quantidadeAtual.toString()); setEditLoteDate(lote.dataValidade ? lote.dataValidade.split('T')[0] : ''); }} className="p-1.5 bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 rounded hover:bg-slate-200 dark:hover:bg-slate-700">
                                    <Edit2 className="w-4 h-4"/>
                                 </button>
                               )}

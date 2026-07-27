@@ -1,0 +1,25 @@
+name: Automation - Sincronização FEFO VMPay
+on:
+  schedule:
+    # Executa todos os dias às 04h00 UTC (01h00 BRT)
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync_fefo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Código
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Instalar Dependências
+        run: npm ci
+      - name: Sincronizar Abastecimentos e Vendas (FEFO)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          VMPAY_API_KEY: ${{ secrets.VMPAY_API_KEY }}
+        run: npx tsx scripts/sync_fefo_vmpay.ts
