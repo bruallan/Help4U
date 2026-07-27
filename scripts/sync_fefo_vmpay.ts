@@ -17,6 +17,7 @@ async function wait(ms: number) {
 
 async function fetchApi(endpoint: string, params: Record<string, any> = {}) {
   const url = new URL(`${BASE_URL}/api/v1${endpoint}`);
+  console.log("Fetching URL:", url.toString());
   url.searchParams.append('access_token', VMPAY_API_KEY as string);
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null) {
@@ -43,7 +44,8 @@ async function fetchApi(endpoint: string, params: Record<string, any> = {}) {
 async function processPickLists() {
   log("Buscando scheduled_visits (Visitas Agendadas/Realizadas)...");
   // Como exemplo, buscando os últimos 7 dias. Na prática, pode ser baseado no último sync.
-  const startIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const startIso = "20/07/2026 00:00:00";
   
   let page = 1;
   let hasMore = true;
@@ -126,14 +128,15 @@ async function aplicarAbastecimentoFEFO(movimentacoes: any[]) {
 
 async function processVendas() {
   log("Buscando vendas (cashless_facts) para deduzir do estoque...");
-  const startIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const startIso = "20/07/2026 00:00:00";
   
   let page = 1;
   let hasMore = true;
   let totalVendas = 0;
   
   while (hasMore) {
-    const vendasResponse = await fetchApi('/cashless_facts', { start_date: startIso, page, per_page: 500 });
+    const vendasResponse = await fetchApi('/cashless_facts', { page, per_page: 100 });
     const vendas = vendasResponse || []; // Pode ser que a API retorne no formato paginado
     if (!vendas || vendas.length === 0) break;
     
