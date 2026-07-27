@@ -44,15 +44,16 @@ async function fetchApi(endpoint: string, params: Record<string, any> = {}) {
 async function processPickLists() {
   log("Buscando scheduled_visits (Visitas Agendadas/Realizadas)...");
   // Como exemplo, buscando os últimos 7 dias. Na prática, pode ser baseado no último sync.
-  const d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const startIso = "20/07/2026 00:00:00";
+  const startIso = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString();
+  const endIso = new Date().toISOString();
+  
   
   let page = 1;
   let hasMore = true;
   let totalAbastecimentos = 0;
   
   while (hasMore) {
-    const visits = await fetchApi('/scheduled_visits', { page, per_page: 100 });
+    const visits = await fetchApi('/scheduled_visits', { start_date: startIso, end_date: endIso, page, per_page: 100 });
     if (!visits || visits.length === 0) break;
     
     for (const visit of visits) {
@@ -128,15 +129,16 @@ async function aplicarAbastecimentoFEFO(movimentacoes: any[]) {
 
 async function processVendas() {
   log("Buscando vendas (cashless_facts) para deduzir do estoque...");
-  const d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const startIso = "20/07/2026 00:00:00";
+  const startIso = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString();
+  const endIso = new Date().toISOString();
+  
   
   let page = 1;
   let hasMore = true;
   let totalVendas = 0;
   
   while (hasMore) {
-    const vendasResponse = await fetchApi('/cashless_facts', { page, per_page: 100 });
+    const vendasResponse = await fetchApi('/cashless_facts', { start_date: startIso, end_date: endIso, page, per_page: 100 });
     const vendas = vendasResponse || []; // Pode ser que a API retorne no formato paginado
     if (!vendas || vendas.length === 0) break;
     
