@@ -702,7 +702,7 @@ app.post("/api/sync/vmpay-to-db", async (req, res) => {
            await db.insert(lotesEstoque).values({
              produtoId: p.id,
              produto: p.produto,
-             dataValidade: new Date(2100, 0, 1), // Lote ficticio para ajustar saldo
+             dataValidade: null, // Lote ficticio para ajustar saldo
              quantidadeAtual: toAdd,
              instalacaoId: null
            });
@@ -758,6 +758,16 @@ app.post("/api/planogramas/add-missing", (req, res) => {
       return res.status(500).json({ error: error.message, stderr });
     }
     res.json({ message: "Produtos adicionados aos planogramas com sucesso", stdout, stderr });
+  });
+});
+
+app.post("/api/cron/sync-fefo", (req, res) => {
+  exec("npx tsx scripts/sync_fefo_vmpay.ts", (error, stdout, stderr) => {
+    if (error) {
+      console.error(`Erro ao executar script FEFO: ${error}`);
+      return res.status(500).json({ error: error.message, stderr });
+    }
+    res.json({ message: "Sincronização FEFO com VMPay concluída com sucesso", stdout, stderr });
   });
 });
 

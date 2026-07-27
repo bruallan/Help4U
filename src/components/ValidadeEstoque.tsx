@@ -492,7 +492,7 @@ export default function ValidadeEstoque({ rawData }: ValidadeEstoqueProps) {
 
       const lote = loteData.loteMaisProximo;
       let dpv = Infinity;
-      if (lote) {
+      if (lote && lote.dataValidade) {
         const validadeDate = new Date(lote.dataValidade);
         validadeDate.setHours(0, 0, 0, 0);
         dpv = Math.ceil(
@@ -528,7 +528,7 @@ export default function ValidadeEstoque({ rawData }: ValidadeEstoqueProps) {
         vmd: meta.vmd,
         isHighTurnover: meta.isHighTurnover,
         qty: qtdE,
-        date: lote ? lote.dataValidade.split("T")[0] : "-",
+        date: lote && lote.dataValidade ? lote.dataValidade.split("T")[0] : "-",
         dpv,
         te,
         ir,
