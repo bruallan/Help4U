@@ -1,6 +1,6 @@
 import { db } from "../src/db/index";
 import { dimProdutos, dimPlanogramas, dimInstalacoes, fatoVendas } from "../src/db/schema";
-import { eq, gt } from "drizzle-orm";
+import { eq, gt, and, inArray } from "drizzle-orm";
 import nodemailer from "nodemailer";
 
 const VMPAY_API_KEY = process.env.VMPAY_API_KEY;
@@ -199,7 +199,12 @@ async function routine3_salesVelocity(planograms: any[]) {
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  const vendas = await db.select().from(fatoVendas).where(gt(fatoVendas.dataVenda, thirtyDaysAgo));
+  const vendas = await db.select().from(fatoVendas).where(
+    and(
+      gt(fatoVendas.dataVenda, thirtyDaysAgo),
+      inArray(fatoVendas.statusVenda, ['OK', 'ok', 'Ok'])
+    )
+  );
 
   const salesMap = new Map<string, { total: number, lastDate: Date }>();
   vendas.forEach(v => {

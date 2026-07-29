@@ -9,9 +9,9 @@ import {
   dimPlanogramas,
   dimProdutos,
   lotesEstoque,
-  dimCodigosDeBarra,
+  dimCodigosDeBarra, elasticityTests,
 } from "../src/db/schema.js";
-import { eq, and, asc, isNull, gt } from "drizzle-orm";
+import { eq, and, asc, isNull, gt, inArray } from "drizzle-orm";
 
 
 dotenv.config();
@@ -29,6 +29,238 @@ const BASE_URL = "https://vmpay.vertitecnologia.com.br";
 
 // --- Endpoints via Supabase (Drizzle) ---
 import { exec } from "child_process";
+
+import crypto from 'crypto';
+
+app.get("/api/vmpay/products", async (req, res) => {
+  try {
+    const ACCESS_TOKEN = process.env.VMPAY_API_KEY;
+    if (!ACCESS_TOKEN) return res.status(401).json({ error: "Missing VMPAY_API_KEY" });
+    const tag = req.query.tag;
+    const vmpayRes = await fetch(`${BASE_URL}/api/v1/products?access_token=${ACCESS_TOKEN}&per_page=1000`);
+    if (!vmpayRes.ok) throw new Error("Failed to fetch products");
+    let data = await vmpayRes.json();
+    if (tag && typeof tag === 'string') {
+       data = data.filter((p: any) => p.tags && p.tags.some((t: string) => t.toLowerCase() === tag.toLowerCase()));
+    }
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/elasticity", async (req, res) => {
+  try {
+    const tests = await db.select().from(elasticityTests);
+    res.json(tests);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/elasticity", async (req, res) => {
+  try {
+    const { product_id, price_b, days } = req.body;
+    const ACCESS_TOKEN = process.env.VMPAY_API_KEY;
+    
+    // Verify existing test
+    const existingTest = await db.select().from(elasticityTests).where(
+      and(
+        eq(elasticityTests.productId, String(product_id)),
+        inArray(elasticityTests.status, ['waiting_A', 'running_B', 'validating_opt'])
+      )
+    ).limit(1);
+    
+    if (existingTest.length > 0) {
+       return res.status(400).json({ error: "Já existe um teste ativo para este produto." });
+    }
+    
+    // Simulate fetching past 30 days volume (baseline A)
+    // Normally we would query cashless_facts for this product in the last 30 days
+    // Here we can use a mock or query our fatoVendas
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const vendasResult = await db.select().from(fatoVendas)
+      .where(
+        and(
+          eq(fatoVendas.produtoId, parseInt(product_id)),
+          gt(fatoVendas.dataVenda, thirtyDaysAgo),
+          inArray(fatoVendas.statusVenda, ['OK', 'ok', 'Ok'])
+        )
+      );
+      
+    // Calculate volume A and margin A
+    // Fetch product to get current tags and default_price
+    const pRes = await fetch(`${BASE_URL}/api/v1/products/${product_id}?access_token=${ACCESS_TOKEN}`);
+    const pData = await pRes.json();
+    let currentTags = pData.tags || [];
+
+    // Calculate volume A and margin A
+    let volA = 0;
+    let marginA = 0;
+    let priceA = 0;
+    
+    if (vendasResult.length > 0) {
+       priceA = vendasResult.reduce((sum, v) => sum + (v.valor || 0), 0) / vendasResult.length;
+       volA = vendasResult.length;
+       marginA = vendasResult.reduce((sum, v) => sum + ((v.valor || 0) - (v.precoCusto || 0)), 0);
+    } else {
+       // Use real product price if no sales found, but use 1 for volume to avoid div by zero
+       priceA = pData.default_price || 10.0;
+       volA = 10;
+       marginA = 20;
+    }
+    
+    const testId = crypto.randomUUID();
+    const dateBStart = new Date();
+    const dateBEnd = new Date();
+    dateBEnd.setDate(dateBEnd.getDate() + days);
+
+    // Apply tag to product in VMPay
+    
+        // Remove previous phase tags
+    currentTags = currentTags.filter((t: string) => !t.startsWith('teste_'));
+    currentTags.push(`teste_B_${price_b}`);
+    
+    const updatePayload = {
+       product: {
+          tags: currentTags,
+          default_price: parseFloat(price_b)
+       }
+    };
+  
+    await fetch(`${BASE_URL}/api/v1/products/${product_id}?access_token=${ACCESS_TOKEN}`, {
+       method: 'PATCH',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify(updatePayload)
+    });
+
+    await db.insert(elasticityTests).values({
+       id: testId,
+       productId: String(product_id),
+       status: 'running_B',
+       priceA,
+       volA,
+       marginA,
+       priceB: price_b,
+       dateBStart,
+       dateBEnd
+    });
+    
+    res.json({ id: testId });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/elasticity/:id/recalculate", async (req, res) => {
+   try {
+     const { id } = req.params;
+     const testResults = await db.select().from(elasticityTests).where(eq(elasticityTests.id, id)).limit(1);
+     if (testResults.length === 0) return res.status(404).json({ error: "Teste não encontrado" });
+     const t = testResults[0];
+
+     if (!t.priceA || !t.volA || !t.priceB || !t.volB) {
+        return res.status(400).json({ error: "Faltam dados de A ou B para recalcular." });
+     }
+
+     const pA = t.priceA;
+     const vA = t.volA;
+     const pB = t.priceB;
+     const vB = t.volB;
+     const mA = t.marginA || (pA * vA * 0.3); // mock margin if null
+
+     // Custo total deduzido da margem (assumindo Overhead = 0)
+     const C = pA - (mA / vA);
+     const overhead = 0.0; // 0% default como não temos isso no banco ainda
+
+     // 1. Elasticidade
+     const deltaV = (vB - vA) / vA;
+     const deltaP = (pB - pA) / pA;
+     const E = deltaV / deltaP;
+
+     let pOpt = pA;
+     let mOptProj = mA;
+
+     if (E < 0) {
+        // Preço Ótimo = (P_A * (E - 1) * (1 - Overhead) + E * Custo) / (2 * E * (1 - Overhead))
+        pOpt = (pA * (E - 1) * (1 - overhead) + (E * C)) / (2 * E * (1 - overhead));
+        
+        // Volume Projetado: V_O = V_A * (1 + E * ((P_O - P_A) / P_A))
+        const vOpt = vA * (1 + (E * ((pOpt - pA) / pA)));
+        
+        // Lucro Projetado: L_O = (P_O - C - P_O * Overhead) * V_O
+        mOptProj = (pOpt - C - (pOpt * overhead)) * vOpt;
+     } else {
+        // Inelástico ou anômalo
+        if ((t.marginB || 0) > mA) {
+            pOpt = pB;
+            mOptProj = t.marginB || 0;
+        }
+     }
+
+     await db.update(elasticityTests).set({ 
+        status: 'validating_opt',
+        priceOpt: pOpt,
+        expectedMarginOpt: mOptProj,
+        elasticityCoef: E
+     }).where(eq(elasticityTests.id, id));
+
+     res.json({ success: true, pOpt, E });
+   } catch (e: any) {
+     res.status(500).json({ error: e.message });
+   }
+});
+
+
+
+
+app.delete("/api/elasticity/:id", async (req, res) => {
+   try {
+     const { id } = req.params;
+     const ACCESS_TOKEN = process.env.VMPAY_API_KEY;
+     
+     // 1. Get the test
+     const testResults = await db.select().from(elasticityTests).where(eq(elasticityTests.id, id)).limit(1);
+     if (testResults.length === 0) {
+        return res.status(404).json({ error: "Teste não encontrado" });
+     }
+     const test = testResults[0];
+     
+     // 2. Fetch current product from VMPay to update price and tags
+     const pRes = await fetch(`${BASE_URL}/api/v1/products/${test.productId}?access_token=${ACCESS_TOKEN}`);
+     if (pRes.ok) {
+         const pData = await pRes.json();
+         let currentTags = pData.tags || [];
+         currentTags = currentTags.filter((t) => !t.startsWith('teste_'));
+         
+         const updatePayload = {
+            product: {
+               tags: currentTags,
+               default_price: test.priceA // revert to original price
+            }
+         };
+         
+         await fetch(`${BASE_URL}/api/v1/products/${test.productId}?access_token=${ACCESS_TOKEN}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatePayload)
+         });
+     }
+     
+     // 3. Delete from DB
+     await db.delete(elasticityTests).where(eq(elasticityTests.id, id));
+     
+     res.json({ success: true });
+   } catch (e) {
+     res.status(500).json({ error: e.message });
+   }
+});
+
+
+// MOCK FINISHED TESTS
+
 app.post("/api/sync-db", (req, res) => {
   exec("npm run db:sync", (error, stdout, stderr) => {
     if (error) {
@@ -41,7 +273,7 @@ app.post("/api/sync-db", (req, res) => {
 
 app.get("/api/sales", async (req, res) => {
   try {
-    const data = await db.select().from(fatoVendas);
+    const data = await db.select().from(fatoVendas).where(inArray(fatoVendas.statusVenda, ['OK', 'ok', 'Ok']));
     const dbRows = data.map((v) => ({
       date: v.dataVenda,
       dayDate: v.dataVenda,
@@ -327,7 +559,7 @@ app.get("/api/proxy/goods", async (req, res) => {
     if (!ACCESS_TOKEN)
       return res.status(401).json({ error: "Missing VMPAY_API_KEY" });
     const { page } = req.query;
-    const url = `${BASE_URL}/api/v1/goods?access_token=${ACCESS_TOKEN}&per_page=100&page=${page || 1}`;
+    const url = `${BASE_URL}/api/v1/products?access_token=${ACCESS_TOKEN}&per_page=100&page=${page || 1}`;
     const fetchRes = await fetchWithRetry(url);
     const data = await fetchRes.json();
     res.json(data);

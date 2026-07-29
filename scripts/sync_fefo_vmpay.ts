@@ -146,6 +146,7 @@ async function processVendas() {
     const vendasAgrupadas = new Map<string, { produtoId: number, instalacaoId: number, quantidade: number }>();
     
     for (const venda of vendas) {
+      if (!['OK', 'ok', 'Ok'].includes(venda.status)) continue;
       if (venda.good_id && venda.installation_id) {
         const key = `${venda.installation_id}_${venda.good_id}`;
         if (!vendasAgrupadas.has(key)) {
@@ -161,7 +162,7 @@ async function processVendas() {
       totalVendas += movimentacoes.length;
     }
     
-    if (vendas.length < 500) hasMore = false;
+    if (vendas.length < 100) hasMore = false;
     page++;
   }
   log(`Total de grupos de vendas processados: ${totalVendas}`);

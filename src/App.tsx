@@ -78,6 +78,7 @@ import { AnaliseCesta } from "./components/AnaliseCesta";
 import { MapaCalor } from "./components/MapaCalor";
 import { GestaoValidade } from "./components/GestaoValidade";
 import ValidadeEstoque from "./components/ValidadeEstoque";
+import ElasticidadePrecos from "./components/ElasticidadePrecos";
 import AuditoriaVMPay from "./components/AuditoriaVMPay";
 import RepasseSindicos from "./components/RepasseSindicos";
 
@@ -224,6 +225,7 @@ export default function App() {
     | "auditoria"
     | "repasse_sindicos"
     | "validade_estoque"
+    | "elasticidade_precos"
   >("vendas");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -1644,6 +1646,22 @@ export default function App() {
             <AlertCircle className="w-5 h-5 text-purple-500" />
             <span>Validade Estoque</span>
           </button>
+        
+          <button
+            onClick={() => {
+              setActiveTab("elasticidade_precos");
+              setIsSidebarOpen(false);
+            }}
+            className={cn(
+              "w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors",
+              activeTab === "elasticidade_precos"
+                ? "bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100",
+            )}
+          >
+            <LineChart className="w-5 h-5 text-amber-500" />
+            <span>Elasticidade de Preços</span>
+          </button>
         </nav>
 
         <div className="p-4 border-t border-slate-100 dark:border-slate-800 space-y-2">
@@ -1800,7 +1818,9 @@ export default function App() {
                                           ? "Relatório de Repasse para Síndicos"
                                           : activeTab === "validade_estoque"
                                             ? "Validade Estoque"
-                                            : "Indicadores de Risco"}
+                                            : activeTab === "elasticidade_precos"
+ ? "Elasticidade de Preços"
+ : "Indicadores de Risco"}
               </h1>
               <p className="text-slate-500 dark:text-slate-400 mt-2">
                 {activeTab === "vendas"
@@ -1831,14 +1851,17 @@ export default function App() {
                                           ? "Acompanhe mês a mês o faturamento, cálculo de repasse, energia e relatórios de perdas/furtos de cada condomínio."
                                           : activeTab === "validade_estoque"
                                             ? "Gerencie e verifique as validades dos lotes de produtos no seu estoque central."
-                                            : "Veja alertas de risco para seus produtos."}
+                                            : activeTab === "elasticidade_precos"
+ ? "Teste A/B e validação do preço ótimo de produtos."
+ : "Veja alertas de risco para seus produtos."}
               </p>
             </header>
 
             {/* Global Filters */}
             {rawData &&
               activeTab !== "auditoria" &&
-              activeTab !== "repasse_sindicos" && (
+              activeTab !== "repasse_sindicos" &&
+              activeTab !== "elasticidade_precos" && (
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl">
                   <div className="flex items-center space-x-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 shadow-sm">
                     <Calendar className="w-4 h-4 text-slate-400" />
@@ -1877,7 +1900,8 @@ export default function App() {
               activeTab !== "analise_cesta" &&
               activeTab !== "mapa_calor" &&
               activeTab !== "auditoria" &&
-              activeTab !== "repasse_sindicos" && (
+              activeTab !== "repasse_sindicos" &&
+              activeTab !== "elasticidade_precos" && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                     <div className="flex items-center space-x-3">
@@ -3596,6 +3620,9 @@ export default function App() {
             )}
             {activeTab === "validade_estoque" && rawData && (
               <ValidadeEstoque rawData={rawData} />
+            )}
+            {activeTab === "elasticidade_precos" && (
+              <ElasticidadePrecos />
             )}
           </div>
         </div>
