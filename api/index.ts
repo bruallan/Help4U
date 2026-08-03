@@ -340,6 +340,19 @@ app.post("/api/lotes", async (req, res) => {
 app.get("/api/barcode/:code", async (req, res) => {
   try {
     const code = req.params.code;
+    
+    // 1. Try checking dimProdutos directly
+    const prodDirect = await db
+      .select()
+      .from(dimProdutos)
+      .where(eq(dimProdutos.codigoBarras, code))
+      .limit(1);
+      
+    if (prodDirect.length > 0) {
+      return res.json(prodDirect[0]);
+    }
+    
+    // 2. Try checking dimCodigosDeBarra (Principal)
     const result = await db
       .select()
       .from(dimCodigosDeBarra)
@@ -359,7 +372,7 @@ app.get("/api/barcode/:code", async (req, res) => {
       }
     }
 
-    // Also try checking codigoAdicional if needed
+    // 3. Try checking dimCodigosDeBarra (Adicional)
     const result2 = await db
       .select()
       .from(dimCodigosDeBarra)
