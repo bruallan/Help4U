@@ -49,6 +49,24 @@ export default function ValidadeEstoque({ rawData }: ValidadeEstoqueProps) {
   const [produtosDB, setProdutosDB] = useState<ProdutoDB[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchSku, setSearchSku] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+       if (/^\d{8,}$/.test(searchSku)) {
+          try {
+             const res = await fetch(`${API_BASE}/api/barcode/${searchSku}`);
+             if (res.ok) {
+                 const data = await res.json();
+                 setDebouncedSearch(data.produto);
+                 return;
+             }
+          } catch(e) {}
+       }
+       setDebouncedSearch(searchSku);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchSku]);
+
   const [isLoading, setIsLoading] = useState(false);
 
 
@@ -80,10 +98,21 @@ export default function ValidadeEstoque({ rawData }: ValidadeEstoqueProps) {
       html5QrCodeSearch.start(
         { facingMode: "environment" },
         { fps: 30, qrbox: { width: 300, height: 150 } },
-        (decodedText: string) => {
-           if (html5QrCodeSearch.isScanning) html5QrCodeSearch.stop();
+        async (decodedText: string) => {
+           if (html5QrCodeSearch.isScanning) await html5QrCodeSearch.stop();
            setIsScanningSearch(false);
-           setSearchSku(decodedText);
+           try {
+             const res = await fetch(`${API_BASE}/api/barcode/${decodedText}`);
+             if (res.ok) {
+               const data = await res.json();
+               setSearchSku(data.produto);
+             } else {
+               setSearchSku(decodedText);
+             }
+           } catch (e) {
+             console.error(e);
+             setSearchSku(decodedText);
+           }
         },
         (err: any) => {}
       ).catch(console.error);
@@ -448,12 +477,14 @@ export default function ValidadeEstoque({ rawData }: ValidadeEstoqueProps) {
       p.quantidadeTotal += lote.quantidadeAtual;
 
       const validadeLote = new Date(lote.dataValidade);
-      if (
-        !p.loteMaisProximo ||
-        validadeLote.getTime() <
-          new Date(p.loteMaisProximo.dataValidade).getTime()
-      ) {
-        p.loteMaisProximo = lote;
+      if (lote.quantidadeAtual > 0) {
+        if (
+          !p.loteMaisProximo ||
+          validadeLote.getTime() <
+            new Date(p.loteMaisProximo.dataValidade).getTime()
+        ) {
+          p.loteMaisProximo = lote;
+        }
       }
     }
     return map;
@@ -479,8 +510,20 @@ export default function ValidadeEstoque({ rawData }: ValidadeEstoqueProps) {
   const tableData = useMemo(() => {
     const arr = [];
     for (const [produto, loteData] of lotesAgregados.entries()) {
-      if (searchSku && !produto.toLowerCase().includes(searchSku.toLowerCase()))
-        continue;
+      let matches = false;
+      if (!debouncedSearch) {
+        matches = true;
+      } else {
+        if (produto.toLowerCase().includes(debouncedSearch.toLowerCase())) {
+          matches = true;
+        } else {
+          const pDB = produtosDB.find(p => p.produto === produto);
+          if (pDB && pDB.codigoBarras && pDB.codigoBarras.includes(debouncedSearch)) {
+            matches = true;
+          }
+        }
+      }
+      if (!matches) continue;
 
       const meta = skuMetrics.map.get(produto) || {
         vmd: 0,
