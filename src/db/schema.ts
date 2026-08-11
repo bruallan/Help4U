@@ -101,6 +101,7 @@ export const lotesEstoque = pgTable("lotes_estoque", {
   quantidadeAtual: integer("quantidade_atual"),
   instalacaoId: integer("instalacao_id"), // null = Depósito, otherwise Mercado
   status: text("status").default("consolidado"), // "consolidado", "aguardando_nota", "aguardando_validade"
+  fornecedor: text("fornecedor"),
 });
 
 export const elasticityTests = pgTable('elasticity_tests', {

@@ -33,19 +33,19 @@ export default function RecebimentoPendencias({
       if (!res.ok) throw new Error("Erro ao buscar no VMPay");
       const data = await res.json();
       
-      // Para cada entrada, criar um lote "aguardando_validade"
-      // Assumindo data como array de itens
       const entries = Array.isArray(data) ? data : (data.data || []);
       let count = 0;
       for (const entry of entries) {
          if (entry.kind !== "StorableEntry" && entry.originator_type !== "StorableEntry") continue;
          
-         const qty = entry.quantity || (entry.total_cost_price && entry.cost_price ? Math.round(entry.total_cost_price / entry.cost_price) : 1);
+         const qty = entry.quantity || entry.value || (entry.total_cost_price && entry.cost_price ? Math.round(entry.total_cost_price / entry.cost_price) : 1);
          const prodName = entry.good?.display_name || entry.product_name;
          if (!prodName) continue;
+         const fn = entry.provider?.name || null;
 
-         // Check if already exists in aguardando_validade to avoid exact dupes roughly
-         const isDupe = lotesAguardandoValidade.find(l => l.produto === prodName && l.quantidadeAtual === qty);
+         // Check if already exists in aguardando_validade
+         // Consider it duplicate if same product, same qty, same provider
+         const isDupe = lotesAguardandoValidade.find(l => l.produto === prodName && l.quantidadeAtual === qty && l.fornecedor === fn);
          if (isDupe) continue;
 
          const pDB = produtos.find(p => p.produto === prodName || p.codigoBarras === entry.good?.barcode);
@@ -58,7 +58,8 @@ export default function RecebimentoPendencias({
              produto: prodName,
              quantidadeAtual: qty,
              dataValidade: null,
-             status: "aguardando_validade"
+             status: "aguardando_validade",
+             fornecedor: fn
            })
          });
          count++;
@@ -282,58 +283,94 @@ export default function RecebimentoPendencias({
             </div>
             <p className="text-sm text-slate-500 mb-4">Produtos que deram entrada via Nota Fiscal no VMPay. Informe a validade para consolidar.</p>
 
-            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
-              <table className="w-full text-sm text-left text-slate-900 dark:text-slate-200">
-                <thead className="text-xs uppercase bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
-                  <tr>
-                    <th className="px-4 py-3">Produto</th>
-                    <th className="px-4 py-3 w-24">Qtd</th>
-                    <th className="px-4 py-3 w-40">Validade</th>
-                    <th className="px-4 py-3 text-right">Ação</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lotesAguardandoValidade.length === 0 && (
-                    <tr><td colSpan={4} className="px-4 py-6 text-center text-slate-500">Nenhum item aguardando.</td></tr>
-                  )}
-                  {lotesAguardandoValidade.map(l => (
-                    <tr key={l.idLote} className="border-b border-slate-100 dark:border-slate-800">
-                      <td className="px-4 py-3 font-medium truncate max-w-[150px]" title={l.produto}>{l.produto}</td>
-                      <td className="px-4 py-3 font-mono">{l.quantidadeAtual}</td>
-                      <td className="px-4 py-3">
-                        <input 
-                          type="date" 
-                          className="bg-slate-50 border border-slate-200 p-1.5 rounded text-sm w-full dark:bg-slate-950 dark:border-slate-800 dark:text-white [color-scheme:light_dark]"
-                          onChange={(e) => {
-                             // Poderia ter um estado local, mas para simplicidade vamos atualizar no blur ou botao
-                             const el = e.target;
-                             l._tempDate = el.value;
-                          }}
-                        />
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button 
-                            onClick={() => handleSalvarValidade(l, l._tempDate)}
-                            className="p-1.5 bg-green-100 text-green-700 hover:bg-green-200 rounded transition-colors"
-                            title="Salvar"
-                          >
-                            <Check className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={() => handleDelete(l.idLote)}
-                            className="p-1.5 bg-red-100 text-red-700 hover:bg-red-200 rounded transition-colors"
-                            title="Excluir"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            
+            {(() => {
+              if (lotesAguardandoValidade.length === 0) {
+                 return (
+                    <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+                      <table className="w-full text-sm text-left text-slate-900 dark:text-slate-200">
+                        <thead className="text-xs uppercase bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
+                          <tr>
+                            <th className="px-4 py-3">Produto</th>
+                            <th className="px-4 py-3 w-24">Qtd</th>
+                            <th className="px-4 py-3 w-40">Validade</th>
+                            <th className="px-4 py-3 text-right">Ação</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colSpan={4} className="px-4 py-6 text-center text-slate-500">Nenhum item aguardando.</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                 );
+              }
+
+              // Agrupar lotesAguardandoValidade por fornecedor
+              const grupos = {};
+              for (const l of lotesAguardandoValidade) {
+                const fn = l.fornecedor || 'Desconhecido';
+                if (!grupos[fn]) grupos[fn] = [];
+                grupos[fn].push(l);
+              }
+
+              return Object.entries(grupos).map(([fornecedor, itens]) => (
+                <div key={fornecedor} className="mb-6 last:mb-0">
+                  <div className="bg-slate-100 dark:bg-slate-800 px-4 py-2 rounded-t-xl border border-slate-200 dark:border-slate-700 border-b-0 font-semibold text-slate-700 dark:text-slate-300">
+                    <span className="text-xs uppercase tracking-wider text-slate-500 mr-2">Fornecedor:</span>
+                    {fornecedor}
+                  </div>
+                  <div className="overflow-x-auto rounded-b-xl border border-slate-200 dark:border-slate-700">
+                    <table className="w-full text-sm text-left text-slate-900 dark:text-slate-200">
+                      <thead className="text-xs uppercase bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
+                        <tr>
+                          <th className="px-4 py-3">Produto</th>
+                          <th className="px-4 py-3 w-24">Qtd</th>
+                          <th className="px-4 py-3 w-40">Validade</th>
+                          <th className="px-4 py-3 text-right">Ação</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {itens.map(l => (
+                          <tr key={l.idLote} className="border-b border-slate-100 dark:border-slate-800">
+                            <td className="px-4 py-3 font-medium truncate max-w-[150px]" title={l.produto}>{l.produto}</td>
+                            <td className="px-4 py-3 font-mono">{l.quantidadeAtual}</td>
+                            <td className="px-4 py-3">
+                              <input 
+                                type="date" 
+                                className="bg-slate-50 border border-slate-200 p-1.5 rounded text-sm w-full dark:bg-slate-950 dark:border-slate-800 dark:text-white [color-scheme:light_dark]"
+                                onChange={(e) => {
+                                   const el = e.target;
+                                   l._tempDate = el.value;
+                                }}
+                              />
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex justify-end gap-2">
+                                <button 
+                                  onClick={() => handleSalvarValidade(l, l._tempDate)}
+                                  className="p-1.5 bg-green-100 text-green-700 hover:bg-green-200 rounded transition-colors"
+                                  title="Salvar"
+                                >
+                                  <Check className="w-4 h-4" />
+                                </button>
+                                <button 
+                                  onClick={() => handleDelete(l.idLote)}
+                                  className="p-1.5 bg-red-100 text-red-700 hover:bg-red-200 rounded transition-colors"
+                                  title="Excluir"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ));
+            })()}
+
           </div>
 
           {/* AGUARDANDO NOTA */}

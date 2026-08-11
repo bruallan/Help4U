@@ -200,7 +200,7 @@ app.get("/api/lotes", async (req, res) => {
 
 app.post("/api/lotes", async (req, res) => {
   try {
-    const { produtoId, produto, dataValidade, quantidadeAtual, status } = req.body;
+    const { produtoId, produto, dataValidade, quantidadeAtual, status, fornecedor } = req.body;
     const [newLote] = await db
       .insert(lotesEstoque)
       .values({
@@ -209,6 +209,7 @@ app.post("/api/lotes", async (req, res) => {
         dataValidade: dataValidade ? new Date(dataValidade) : null,
         quantidadeAtual: quantidadeAtual ? parseInt(quantidadeAtual, 10) : null,
         status: status || 'consolidado',
+        fornecedor: fornecedor || null,
       })
       .returning();
     res.json(newLote);
@@ -359,25 +360,43 @@ app.get("/api/vmpay/entradas", async (req, res) => {
     const ACCESS_TOKEN = process.env.VMPAY_API_KEY;
     if (!ACCESS_TOKEN) return res.status(401).json({ error: "Missing VMPAY_API_KEY" });
 
-    // Pega as entradas dos últimos X dias (ex: 7 dias)
+    // Pega as entradas dos últimos 7 dias
     const end = new Date();
     const start = new Date();
     start.setDate(start.getDate() - 7);
-
-    const qs = new URLSearchParams({
-      access_token: ACCESS_TOKEN,
-      page: "1",
-      per_page: "50",
-      kind: "StorableEntry",
-      occurred_at_start: start.toISOString(),
-      occurred_at_end: end.toISOString()
-    });
-
-    const vmpayRes = await fetch(`https://vmpay.vertitecnologia.com.br/api/v1/distribution_center_inventories?${qs}`);
-    if (!vmpayRes.ok) throw new Error("Failed to fetch from VMPay");
     
-    const data = await vmpayRes.json();
-    res.json(data);
+    let allEntries = [];
+    let page = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+        const qs = new URLSearchParams({
+          access_token: ACCESS_TOKEN,
+          page: page.toString(),
+          per_page: "1000",
+          kind: "StorableEntry",
+          occurred_at_start: start.toISOString(),
+          occurred_at_end: end.toISOString()
+        });
+
+        const vmpayRes = await fetch(`https://vmpay.vertitecnologia.com.br/api/v1/distribution_center_inventories?${qs}`);
+        if (!vmpayRes.ok) throw new Error("Failed to fetch from VMPay");
+        
+        const data = await vmpayRes.json();
+        
+        if (data.length > 0) {
+            allEntries = allEntries.concat(data);
+            if (data.length < 1000) {
+                hasMore = false;
+            } else {
+                page++;
+            }
+        } else {
+            hasMore = false;
+        }
+    }
+    
+    res.json(allEntries);
   } catch(e: any) {
     res.status(500).json({ error: e.message });
   }
