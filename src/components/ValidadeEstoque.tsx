@@ -1017,6 +1017,7 @@ export default function ValidadeEstoque({ rawData }: ValidadeEstoqueProps) {
                         <tr>
                           <th className="px-4 py-3">ID Lote</th>
                           <th className="px-4 py-3">Validade</th>
+                          <th className="px-4 py-3">Fornecedor</th>
                           <th className="px-4 py-3">Qtd</th>
                           <th className="px-4 py-3 text-right">Ação</th>
                         </tr>
@@ -1031,6 +1032,9 @@ export default function ValidadeEstoque({ rawData }: ValidadeEstoqueProps) {
                               ) : (
                                  lote.dataValidade ? new Date(lote.dataValidade).toLocaleDateString('pt-BR') : '-'
                               )}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-xs text-slate-500" title={lote.fornecedor || 'Desconhecido'}>
+                              {lote.fornecedor ? (lote.fornecedor.length > 20 ? lote.fornecedor.substring(0, 20) + '...' : lote.fornecedor) : 'Desconhecido'}
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap">
                               {editLoteId === lote.idLote ? (
@@ -1055,7 +1059,7 @@ export default function ValidadeEstoque({ rawData }: ValidadeEstoqueProps) {
                         ))}
                         {lotesProd.length === 0 && (
                           <tr>
-                            <td colSpan={4} className="px-4 py-8 text-center text-slate-500">Nenhum lote com saldo encontrado.</td>
+                            <td colSpan={5} className="px-4 py-8 text-center text-slate-500">Nenhum lote com saldo encontrado.</td>
                           </tr>
                         )}
                       </tbody>

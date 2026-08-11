@@ -797,6 +797,17 @@ app.put("/api/lotes/:id", async (req, res) => {
     res.json(result);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
+
+app.delete("/api/lotes/:id", async (req, res) => {
+  try {
+    const result = await db.delete(lotesEstoque)
+      .where(eq(lotesEstoque.idLote, parseInt(req.params.id, 10)))
+      .returning();
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
   }
 });
 
