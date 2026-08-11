@@ -797,6 +797,8 @@ app.put("/api/lotes/:id", async (req, res) => {
     res.json(result);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
+  }
+});
 
 app.delete("/api/lotes/:id", async (req, res) => {
   try {
@@ -806,8 +808,6 @@ app.delete("/api/lotes/:id", async (req, res) => {
     res.json(result);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
-  }
-});
   }
 });
 

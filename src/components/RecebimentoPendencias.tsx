@@ -171,7 +171,6 @@ export default function RecebimentoPendencias({
   };
 
   const handleDelete = async (loteId: number) => {
-    if (!confirm("Remover este lote?")) return;
     try {
       await fetch(`${API_BASE}/api/lotes/${loteId}`, { method: "DELETE" });
       fetchDados();
