@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Building,
   DollarSign,
@@ -31,6 +31,46 @@ export default function RepasseSindicos({
     availableUnits[0] || "",
   );
   const [showEnergyModal, setShowEnergyModal] = useState(false);
+  const [furtosDb, setFurtosDb] = useState<any[]>([]);
+  const [loadingFurtos, setLoadingFurtos] = useState(true);
+  const [showFurtoModal, setShowFurtoModal] = useState(false);
+  const [newFurto, setNewFurto] = useState({ dataFurto: '', valor: '', itens: '', status: 'pendente' });
+  
+  const handleSaveFurto = async () => {
+    if(!newFurto.dataFurto || !newFurto.valor || !newFurto.itens) return;
+    try {
+      const payload = {
+        mercado: selectedUnit,
+        dataFurto: new Date(newFurto.dataFurto + "T12:00:00").toISOString(),
+        valor: parseFloat(newFurto.valor),
+        itens: newFurto.itens,
+        status: newFurto.status
+      };
+      await fetch("/api/furtos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const res = await fetch("/api/furtos");
+      const data = await res.json();
+      setFurtosDb(data);
+      setShowFurtoModal(false);
+      setNewFurto({ dataFurto: '', valor: '', itens: '', status: 'pendente' });
+    } catch(e) { console.error(e); }
+  };
+
+  useEffect(() => {
+    fetch("/api/furtos")
+      .then((res) => res.json())
+      .then((data) => {
+        setFurtosDb(data);
+        setLoadingFurtos(false);
+      })
+      .catch((e) => {
+        console.error("Error fetching furtos", e);
+        setLoadingFurtos(false);
+      });
+  }, []);
 
   // Extract available months based on available data
   const availableMonths = useMemo(() => {
@@ -122,26 +162,56 @@ export default function RepasseSindicos({
       faturamento += row.salePrice;
     });
 
-    // Mock calculations based on standard logic
-    const repasse = faturamento * 0.05; // standard 5% mock
+    const getTaxRateForClient = (clientName) => {
+      if (!clientName) return 0.2;
+      const lower = clientName.toLowerCase();
+      if (lower.includes("alameda")) return 0.27;
+      if (lower.includes("porto") || lower.includes("sollare"))
+        return 0.245;
+      if (lower.includes("villa")) return 0.25;
+      if (lower.includes("verde vida") || lower.includes("verdevida"))
+        return 0.235;
+      if (
+        lower.includes("jardim") ||
+        lower.includes("hortências") ||
+        lower.includes("hortencias")
+      )
+        return 0.24;
+      return 0.2; // Default fallback
+    };
 
-    // Some units use their own energy, others use condo energy. We mock using a name check or string check
-    const usaEnergiaCondominio =
-      selectedUnit.toLowerCase().includes("condominio") ||
-      selectedUnit.length % 2 === 0;
+    let repassePercent = 0;
+    let usaEnergiaCondominio = false;
+    const clientLower = selectedUnit.toLowerCase();
 
-    // Energy calculations
-    const kwhPrice = 0.95; // Mock R$ / kWh
-    const startReading = usaEnergiaCondominio
-      ? 12450 + (faturamento % 1000)
-      : 0;
-    const endReading =
-      startReading +
-      (usaEnergiaCondominio ? Math.floor(Math.random() * 150) + 50 : 0);
-    const energiaDelta = endReading - startReading;
-    const custoEnergia = usaEnergiaCondominio ? energiaDelta * kwhPrice : 0;
+    if (clientLower.includes("alameda")) {
+      repassePercent = 0.07;
+      usaEnergiaCondominio = true;
+    } else if (clientLower.includes("villa")) {
+      repassePercent = 0.05;
+      usaEnergiaCondominio = true;
+    } else if (clientLower.includes("porto") || clientLower.includes("sollare")) {
+      repassePercent = 0.05;
+      usaEnergiaCondominio = false;
+    } else if (clientLower.includes("jardim")) {
+      repassePercent = 0.04;
+      usaEnergiaCondominio = true;
+    } else if (clientLower.includes("verde vida") || clientLower.includes("verdevida")) {
+      repassePercent = 0.04;
+      usaEnergiaCondominio = true;
+    } else if (clientLower.includes("parque")) {
+      repassePercent = 0.02;
+      usaEnergiaCondominio = true;
+    }
 
-    // Mock date dependencies based on selectedMonth
+    const repasse = faturamento * repassePercent;
+    const custoEnergia = 0;
+
+    const startReading = 0;
+    const endReading = 0;
+    const energiaDelta = 0;
+    const kwhPrice = 0;
+
     const [y, m] = selectedMonth ? selectedMonth.split("-") : ["2023", "01"];
     const startDate = new Date(parseInt(y), parseInt(m) - 1, 2, 8, 30);
     const endDate = new Date(parseInt(y), parseInt(m), 1, 9, 15);
@@ -153,26 +223,39 @@ export default function RepasseSindicos({
       kwhPrice,
       startDate,
       endDate,
-      startPhoto:
-        "https://images.unsplash.com/photo-1620025254924-acbf4148b594?w=600&q=80",
-      endPhoto:
-        "https://images.unsplash.com/photo-1620025254924-acbf4148b594?w=600&q=80",
+      startPhoto: "",
+      endPhoto: "",
     };
 
-    // Mock furto data
-    const furtosIdentificados = Math.max(0, faturamento * 0.005);
-    const furtosNaoIdentificados = Math.max(0, faturamento * 0.015);
+
+    const startDateFurto = new Date(parseInt(y), parseInt(m) - 1, 1);
+    const endDateFurto = new Date(parseInt(y), parseInt(m), 1);
+
+    const furtosMes = furtosDb.filter(f => {
+      const fd = new Date(f.dataFurto);
+      return f.mercado === selectedUnit && fd >= startDateFurto && fd < endDateFurto;
+    });
+
+    const furtosIdentificados = furtosMes
+      .filter(f => f.status === 'recuperado')
+      .reduce((acc, f) => acc + f.valor, 0);
+
+    const furtosNaoIdentificados = furtosMes
+      .filter(f => f.status === 'pendente')
+      .reduce((acc, f) => acc + f.valor, 0);
 
     return {
       faturamento,
       repasse,
+      repassePercent,
       usaEnergiaCondominio,
       custoEnergia,
       furtosIdentificados,
       furtosNaoIdentificados,
+      furtosLista: furtosMes,
       energyData,
     };
-  }, [filteredData, selectedUnit, selectedMonth]);
+  }, [filteredData, selectedUnit, selectedMonth, furtosDb]);
 
   // Format YYYY-MM
   const formatMonth = (str: string) => {
@@ -255,7 +338,7 @@ export default function RepasseSindicos({
             {formatCurrency(stats.repasse)}
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Estimado no período
+            Estimado no período ({(stats.repassePercent * 100).toFixed(1)}%)
           </p>
         </div>
 
@@ -294,7 +377,7 @@ export default function RepasseSindicos({
             <div className="mt-4 flex items-center justify-center p-2 rounded-lg bg-slate-50 dark:bg-slate-800 border-dashed border border-slate-300 dark:border-slate-700">
               <p className="text-sm font-medium text-slate-500 flex items-center gap-2">
                 <Info className="w-4 h-4" />
-                Não se aplica
+                R$ 0,00 (Sem cobrança)
               </p>
             </div>
           )}
@@ -302,13 +385,14 @@ export default function RepasseSindicos({
 
         {/* Furtos */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center space-x-3 mb-2">
-            <div className="p-2 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-lg">
+          <div className="flex items-center mb-2">
+            <div className="p-2 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-lg mr-3">
               <AlertTriangle className="w-5 h-5" />
             </div>
-            <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-400">
+            <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-400 flex-1">
               Relatório de Furtos
             </h3>
+            <button onClick={() => setShowFurtoModal(true)} className="text-xs bg-red-100 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-200 transition-colors dark:bg-red-900/40 dark:text-red-400 font-medium">Cadastrar</button>
           </div>
 
           <div className="mt-4 flex gap-4">
@@ -328,6 +412,22 @@ export default function RepasseSindicos({
               <p className="text-sm font-bold text-red-600 dark:text-red-400">
                 {formatCurrency(stats.furtosNaoIdentificados)}
               </p>
+            </div>
+          </div>
+          
+          <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+            <p className="text-xs font-semibold text-slate-500 mb-2">Itens Registrados:</p>
+            <div className="space-y-2 max-h-32 overflow-y-auto pr-1 custom-scrollbar">
+              {stats.furtosLista.length > 0 ? stats.furtosLista.map((f: any) => (
+                <div key={f.id} className="flex justify-between items-center text-xs bg-slate-50 dark:bg-slate-800/50 p-2 rounded">
+                  <div className="truncate max-w-[140px] text-slate-700 dark:text-slate-300" title={f.itens}>
+                    {f.status === 'recuperado' ? '✅' : '⏳'} [{new Date(f.dataFurto).toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'})}] {f.itens}
+                  </div>
+                  <div className="font-semibold text-slate-900 dark:text-white">{formatCurrency(f.valor)}</div>
+                </div>
+              )) : (
+                <p className="text-xs text-slate-400">Nenhum furto registrado</p>
+              )}
             </div>
           </div>
         </div>
@@ -520,6 +620,47 @@ export default function RepasseSindicos({
               >
                 Fechar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal Cadastrar Furto */}
+      {showFurtoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-red-500" />
+                Registrar Furto - {selectedUnit}
+              </h3>
+              <button onClick={() => setShowFurtoModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Data</label>
+                <input type="date" value={newFurto.dataFurto} onChange={e => setNewFurto({...newFurto, dataFurto: e.target.value})} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-slate-900 dark:text-white [color-scheme:light_dark]" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Valor (R$)</label>
+                <input type="number" step="0.01" value={newFurto.valor} onChange={e => setNewFurto({...newFurto, valor: e.target.value})} placeholder="Ex: 9.99" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-slate-900 dark:text-white" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Itens</label>
+                <input type="text" value={newFurto.itens} onChange={e => setNewFurto({...newFurto, itens: e.target.value})} placeholder="Ex: 2x Coca-Cola, 1x Salgadinho" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-slate-900 dark:text-white" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Status</label>
+                <select value={newFurto.status} onChange={e => setNewFurto({...newFurto, status: e.target.value})} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-slate-900 dark:text-white">
+                  <option value="pendente">⏳ Em identificação / Pendente</option>
+                  <option value="recuperado">✅ Recuperado</option>
+                </select>
+              </div>
+            </div>
+            <div className="p-6 bg-slate-50 dark:bg-slate-800/50 flex justify-end gap-3 border-t border-slate-100 dark:border-slate-800">
+              <button onClick={() => setShowFurtoModal(false)} className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">Cancelar</button>
+              <button onClick={handleSaveFurto} className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors">Salvar Registro</button>
             </div>
           </div>
         </div>

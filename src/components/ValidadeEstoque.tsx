@@ -256,7 +256,7 @@ export default function ValidadeEstoque({ rawData }: ValidadeEstoqueProps) {
       });
       if (res.ok) {
         await fetchDados();
-        alert("Ajuste Banco de Dados -> VM Pay enviado com sucesso (Mock).");
+        alert("Ajuste Banco de Dados -> VM Pay enviado com sucesso!");
       } else {
         alert("Erro ao sincronizar");
       }
@@ -1029,7 +1029,7 @@ export default function ValidadeEstoque({ rawData }: ValidadeEstoqueProps) {
                               {editLoteId === lote.idLote ? (
                                  <input type="date" value={editLoteDate} onChange={e => setEditLoteDate(e.target.value)} className="bg-white border border-slate-200 text-slate-900 text-sm rounded-md p-1.5 dark:bg-slate-950 dark:border-slate-700 dark:text-white [color-scheme:light_dark]" />
                               ) : (
-                                 new Date(lote.dataValidade).toLocaleDateString('pt-BR')
+                                 lote.dataValidade ? new Date(lote.dataValidade).toLocaleDateString('pt-BR') : '-'
                               )}
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap">

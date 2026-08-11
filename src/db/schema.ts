@@ -127,3 +127,13 @@ export const elasticityTests = pgTable('elasticity_tests', {
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
+
+export const furtos = pgTable('furtos', {
+  id: serial('id').primaryKey(),
+  mercado: text('mercado').notNull(),
+  dataFurto: timestamp('data_furto'),
+  valor: doublePrecision('valor').notNull(),
+  itens: text('itens'),
+  status: text('status').notNull(), // 'recuperado', 'pendente'
+  createdAt: timestamp('created_at').defaultNow(),
+});
