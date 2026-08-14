@@ -452,7 +452,7 @@ function InnerApp() {
   };
 
   useEffect(() => {
-    if (!rawData) return;
+    if (!rawData || rawData.length === 0) return;
 
     setIsLoading(true);
     const timer = setTimeout(() => {
@@ -932,8 +932,7 @@ function InnerApp() {
     // Se nenhum mercado selecionado, usar todos disponíveis (ou inicializar)
     const marketsToUse =
       mensalSelectedMarkets.length > 0 ? mensalSelectedMarkets : availableUnits;
-    if (marketsToUse.length === 0) return;
-
+    // We must initialize the map even if marketsToUse is empty, so we return an array of length 12
     const dataByMonth = new Map<number, Record<string, number>>();
     // Inicializar meses 0 a 11
     for (let i = 0; i < 12; i++) {
@@ -1052,7 +1051,55 @@ function InnerApp() {
           date: new Date(d.date),
           dayDate: new Date(d.dayDate),
         }));
+
+        const uniqueUnits = Array.from(new Set(mapped.map((d) => d.client))).sort();
+        setAvailableUnits(uniqueUnits);
+
+        if (mapped.length > 0) {
+          const times = mapped.map(d => d.date.getTime());
+          const minTime = times.reduce((min, t) => t < min ? t : min, times[0] || 0);
+          const maxTime = times.reduce((max, t) => t > max ? t : max, times[0] || 0);
+          const minT = new Date(minTime);
+          const maxT = new Date(maxTime);
+          setDatasetMinDate(minT.toISOString().split("T")[0]);
+          setDatasetMaxDate(maxT.toISOString().split("T")[0]);
+        }
+
         setRawData(mapped);
+
+        // Pre-populate Frentes based on dim_planogramas and layout_gondola
+        try {
+          const resLayout = await fetch(`${API_BASE}/api/layout-gondola`);
+          const resPlan = await fetch(`${API_BASE}/api/planogramas`);
+          
+          let frentes: Record<string, number> = {};
+          
+          if (resPlan.ok) {
+            const planData = await resPlan.json();
+            planData.forEach((p: any) => {
+              if (p.produto) {
+                frentes[p.produto] = (frentes[p.produto] || 0) + 1;
+              }
+            });
+          }
+
+          if (resLayout.ok) {
+            const layoutData = await resLayout.json();
+            Object.values(layoutData).forEach((config: any) => {
+              if (config.rects) {
+                config.rects.forEach((rect: any) => {
+                  if (rect.productName) {
+                    frentes[rect.productName] = (frentes[rect.productName] || 0) + 1;
+                  }
+                });
+              }
+            });
+          }
+          
+          setFrentesParam(frentes);
+        } catch (e) {
+          console.error("Error loading frentes:", e);
+        }
       } catch (err: any) {
         console.error(err);
         setError(err.message);
@@ -1072,7 +1119,10 @@ function InnerApp() {
   const zDomain = useMemo(() => {
     if (stats.length === 0) return [0, 100];
     const margins = stats.map((s) => s.margin);
-    return [Math.min(...margins), Math.max(...margins)];
+    return [
+      margins.reduce((a, b) => (a < b ? a : b), margins[0]),
+      margins.reduce((a, b) => (a > b ? a : b), margins[0]),
+    ];
   }, [stats]);
 
   const availableCategories = useMemo(() => {
@@ -1123,7 +1173,7 @@ function InnerApp() {
 
   useEffect(() => {
     if (stats.length > 0) {
-      const maxV = Math.max(...stats.map((s) => s.volume));
+      const maxV = stats.reduce((max, s) => s.volume > max ? s.volume : max, 0);
       const newMaxVol = Math.ceil(maxV * 1.1);
       setMaxVol(newMaxVol);
       setYDomain([0, newMaxVol]);

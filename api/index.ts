@@ -1058,4 +1058,100 @@ app.post("/api/vmpay/refresh-stock", async (req, res) => {
   }
 });
 
+
+// Layout Gondola Routes
+import { layoutGondola } from "../src/db/schema.js";
+
+app.get("/api/layout-gondola", async (req, res) => {
+  try {
+    const data = await db.select().from(layoutGondola);
+    const configs: Record<string, any> = {};
+    for (const row of data) {
+      configs[row.marketName] = row;
+    }
+    res.json(configs);
+  } catch (e: any) {
+    console.error("Error fetching layout gondola:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/layout-gondola", async (req, res) => {
+  try {
+    const { marketName, columns, rowsPerColumn, rects } = req.body;
+    if (!marketName) return res.status(400).json({ error: "marketName is required" });
+
+    // UPSERT
+    await db.insert(layoutGondola).values({
+      marketName,
+      columns,
+      rowsPerColumn,
+      rects,
+      updatedAt: new Date(),
+    }).onConflictDoUpdate({
+      target: layoutGondola.marketName,
+      set: {
+        columns,
+        rowsPerColumn,
+        rects,
+        updatedAt: new Date(),
+      }
+    });
+
+    res.json({ success: true });
+  } catch (e: any) {
+    console.error("Error saving layout gondola:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- ELASTICITY TESTS ROUTES ---
+app.get("/api/elasticity", async (req, res) => {
+  try {
+    const data = await db.select().from(elasticityTests);
+    res.json(data);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/elasticity", async (req, res) => {
+  try {
+    const { product_id, price_b, days } = req.body;
+    if (!product_id || !price_b) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+    const newId = Math.random().toString(36).substring(2, 10);
+    await db.insert(elasticityTests).values({
+      id: newId,
+      productId: product_id,
+      priceB: parseFloat(price_b),
+      status: 'waiting_A',
+    });
+    res.json({ success: true, id: newId });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/elasticity/:id", async (req, res) => {
+  try {
+    await db.delete(elasticityTests).where(eq(elasticityTests.id, req.params.id));
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/elasticity/:id/recalculate", async (req, res) => {
+  try {
+    await db.update(elasticityTests)
+      .set({ status: 'recalculating', updatedAt: new Date() })
+      .where(eq(elasticityTests.id, req.params.id));
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default app;

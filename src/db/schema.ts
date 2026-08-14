@@ -7,6 +7,7 @@ import {
   text,
   timestamp,
   boolean,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 export const dimCategorias = pgTable("dim_categorias", {
@@ -137,4 +138,12 @@ export const furtos = pgTable('furtos', {
   itens: text('itens'),
   status: text('status').notNull(), // 'recuperado', 'pendente'
   createdAt: timestamp('created_at').defaultNow(),
+});
+
+export const layoutGondola = pgTable("layout_gondola", {
+  marketName: text("market_name").primaryKey(),
+  columns: integer("columns").notNull(),
+  rowsPerColumn: integer("rows_per_column").notNull(),
+  rects: jsonb("rects").default('[]').notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });

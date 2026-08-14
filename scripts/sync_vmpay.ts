@@ -438,6 +438,6 @@ export async function runSync() {
 }
 
 import { fileURLToPath } from "url";
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (process.argv[1] && (import.meta.url ? fileURLToPath(import.meta.url) : "") === process.argv[1]) {
   runSync().then(() => process.exit(0)).catch(() => process.exit(1));
 }

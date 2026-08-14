@@ -98,11 +98,49 @@ function getHeatmapColor(value: number, min: number, max: number) {
   return HSLToHex(hue, 100, 50);
 }
 
+const API_BASE = (import.meta as any).env?.VITE_API_URL || "";
+
 export function MapaCalor({ rawData, availableUnits }: MapaCalorProps) {
   const [selectedMarket, setSelectedMarket] = useState<string>(
     availableUnits[0] || "",
   );
   const [configs, setConfigs] = useState<Record<string, MarketShelfConfig>>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    const fetchLayout = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/layout-gondola`);
+        if (res.ok) {
+          const data = await res.json();
+          setConfigs(data);
+        }
+      } catch (err) {
+        console.error("Error fetching layout:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchLayout();
+  }, []);
+
+  const saveLayout = async () => {
+    if (!configs[selectedMarket]) return;
+    setIsSaving(true);
+    try {
+      await fetch(`${API_BASE}/api/layout-gondola`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(configs[selectedMarket]),
+      });
+      // Optionally show a success toast here
+    } catch (err) {
+      console.error("Error saving layout:", err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const [mode, setMode] = useState<Mode>("setup");
   const [metric, setMetric] = useState<"volume" | "faturamento" | "margem">(
@@ -181,8 +219,8 @@ export function MapaCalor({ rawData, availableUnits }: MapaCalorProps) {
     const values = Object.values(productStats).map((p) => p[metric]);
     if (values.length === 0) return { min: 0, max: 1 };
 
-    let min = Math.min(...values);
-    let max = Math.max(...values);
+    let min = values.reduce((a, b) => (a < b ? a : b), values[0]);
+    let max = values.reduce((a, b) => (a > b ? a : b), values[0]);
 
     if (min === max) {
       if (max === 0) {
@@ -548,6 +586,15 @@ export function MapaCalor({ rawData, availableUnits }: MapaCalorProps) {
     );
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+        <span className="ml-3 text-slate-600">Carregando Layout...</span>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6 fade-in h-[900px] max-h-[90vh]">
       <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm shrink-0">
@@ -611,6 +658,13 @@ export function MapaCalor({ rawData, availableUnits }: MapaCalorProps) {
                 )}
               >
                 <Eye className="w-4 h-4" /> Visualização
+              </button>
+              <button
+                onClick={saveLayout}
+                disabled={isSaving}
+                className="ml-2 px-4 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" /> {isSaving ? "Salvando..." : "Salvar no BD"}
               </button>
             </div>
           ) : null}
