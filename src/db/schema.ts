@@ -147,3 +147,10 @@ export const layoutGondola = pgTable("layout_gondola", {
   rects: jsonb("rects").default('[]').notNull(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+export const authorizedEmails = pgTable('authorized_emails', {
+  id: text('id').primaryKey(),
+  email: text('email').notNull().unique(),
+  addedBy: text('added_by'),
+  createdAt: timestamp('created_at').defaultNow(),
+});
