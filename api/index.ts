@@ -935,7 +935,7 @@ import { run as runSyncFefo } from "../scripts/sync_fefo_vmpay.js";
 app.post("/api/planogramas/add-missing", async (req, res) => {
   try {
     const logs = await fillPlanograms();
-    res.json({ message: "Produtos adicionados aos planogramas com sucesso", stdout: logs?.join("\n") });
+    res.json({ message: "Produtos adicionados aos planogramas com sucesso" });
   } catch (error: any) {
     console.error(`Erro ao executar script: ${error}`);
     return res.status(500).json({ error: error.message });
@@ -945,7 +945,7 @@ app.post("/api/planogramas/add-missing", async (req, res) => {
 app.post("/api/cron/sync-fefo", async (req, res) => {
   try {
     const logs = await runSyncFefo();
-    res.json({ message: "Sincronização FEFO com VMPay concluída com sucesso", stdout: logs?.join("\n") });
+    res.json({ message: "Sincronização FEFO com VMPay concluída com sucesso" });
   } catch (error: any) {
     console.error(`Erro ao executar script FEFO: ${error}`);
     return res.status(500).json({ error: error.message });
@@ -955,7 +955,7 @@ app.post("/api/cron/sync-fefo", async (req, res) => {
 app.post("/api/cron/fill-planograms", async (req, res) => {
   try {
     const logs = await fillPlanograms();
-    res.json({ message: "Fill planograms concluído", stdout: logs?.join("\n") });
+    res.json({ message: "Fill planograms concluído" });
   } catch (error: any) {
     console.error(`exec error: ${error}`);
     return res.status(500).json({ error: error.message });

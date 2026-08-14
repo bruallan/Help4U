@@ -224,7 +224,7 @@ export async function run() {
     await processPickLists();
     await processVendas();
     log("Sincronização FEFO concluída com sucesso.");
-    return logs;
+    return;
   } catch (e: any) {
     log(`Erro: ${e.message}`);
     throw e;

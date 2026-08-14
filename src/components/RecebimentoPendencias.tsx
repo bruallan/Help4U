@@ -305,7 +305,7 @@ export default function RecebimentoPendencias({
               }
 
               // Agrupar lotesAguardandoValidade por fornecedor
-              const grupos = {};
+              const grupos: Record<string, typeof lotesAguardandoValidade> = {};
               for (const l of lotesAguardandoValidade) {
                 const fn = l.fornecedor || 'Desconhecido';
                 if (!grupos[fn]) grupos[fn] = [];

@@ -1040,30 +1040,28 @@ function InnerApp() {
     availableUnits,
   ]);
 
-  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      processFile(e.dataTransfer.files[0]);
+  useEffect(() => {
+    async function loadSalesFromAPI() {
+      setIsLoading(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/sales`);
+        if (!res.ok) throw new Error("Falha ao carregar vendas");
+        const data = await res.json();
+        const mapped: MappedRow[] = data.map((d: any) => ({
+          ...d,
+          date: new Date(d.date),
+          dayDate: new Date(d.dayDate),
+        }));
+        setRawData(mapped);
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message);
+      } finally {
+        setIsLoading(false);
+      }
     }
+    loadSalesFromAPI();
   }, []);
-
-  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-  }, []);
-
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      processFile(e.target.files[0]);
-    }
-  };
 
   const filteredStats = useMemo(() => {
     if (!searchTerm) return stats;
@@ -1796,7 +1794,7 @@ function InnerApp() {
                           Resultados da Análise
                         </h2>
                         <p className="text-sm text-slate-500 line-clamp-1">
-                          {fileName} • {stats.length} produtos
+                          Sincronizado do VMPay • {stats.length} produtos
                         </p>
                       </div>
                     </div>

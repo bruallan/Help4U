@@ -188,7 +188,7 @@ export async function fillPlanograms() {
 
   log(`Processo finalizado com sucesso! Total de itens enviados à API VMPay: ${addedCount}`);
   log("Os planogramas no banco de dados local serão atualizados automaticamente na próxima execução da rotina 'sync_vmpay'.");
-  return logs;
+  return;
 }
 
 import { fileURLToPath } from "url";
