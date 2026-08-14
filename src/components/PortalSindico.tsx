@@ -20,16 +20,39 @@ interface RepasseSindicosProps {
   availableUnits: string[];
 }
 
-export default function RepasseSindicos({
+import { useAuth } from "./auth/AuthContext";
+export default function PortalSindico({
   rawData,
   availableUnits,
 }: RepasseSindicosProps) {
   // Configmock for the demo: We'll assume a fixed 5% pass-through rate, and energy cost for testing.
   // In a real scenario this might come from a config collection.
 
-  const [selectedUnit, setSelectedUnit] = useState<string>(
-    availableUnits[0] || "",
-  );
+  const { mainLocationId, role } = useAuth();
+  
+  const allowedUnits = useMemo(() => {
+    if (role === 'Equipe interna') return availableUnits;
+    if (role === 'Síndico' && mainLocationId) {
+       // O rawData tem o campo local_id ou algo que possamos mapear, mas a drop-down usa strings (mercado nome)
+       // O usuário pediu "a lista deve renderizar somente as instalações onde o installation.location_id for estritamente igual ao main_location_id".
+       // O 'rawData' tem 'local_id' ou precisamos extrair isso do DB. Assumindo que a string tem o ID ou rawData mapeia local_id:
+       // Como 'availableUnits' é apenas um array de strings, precisamos filtrar pelas que tem rawData matching local_id === mainLocationId
+       const myRows = rawData.filter((r: any) => r.local_id === mainLocationId || String(r.id) === String(mainLocationId) || r.location_id === mainLocationId);
+       const myUnitNames = Array.from(new Set(myRows.map((r: any) => r.mercado)));
+       // Caso o nome já seja o que está em availableUnits
+       return availableUnits.filter(u => myUnitNames.includes(u));
+    }
+    return availableUnits;
+  }, [availableUnits, role, mainLocationId, rawData]);
+
+  const [selectedUnit, setSelectedUnit] = useState<string>(allowedUnits[0] || "");
+  
+  useEffect(() => {
+    if (allowedUnits.length > 0 && !allowedUnits.includes(selectedUnit)) {
+       setSelectedUnit(allowedUnits[0]);
+    }
+  }, [allowedUnits, selectedUnit]);
+
   const [showEnergyModal, setShowEnergyModal] = useState(false);
   const [furtosDb, setFurtosDb] = useState<any[]>([]);
   const [loadingFurtos, setLoadingFurtos] = useState(true);

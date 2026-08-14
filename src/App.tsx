@@ -80,156 +80,39 @@ import { GestaoValidade } from "./components/GestaoValidade";
 import ValidadeEstoque from "./components/ValidadeEstoque";
 import ElasticidadePrecos from "./components/ElasticidadePrecos";
 import AuditoriaVMPay from "./components/AuditoriaVMPay";
-import RepasseSindicos from "./components/RepasseSindicos";
+import PortalSindico from "./components/PortalSindico";
+import { AuthProvider, useAuth } from "./components/auth/AuthContext";
+import Login from "./components/auth/Login";
+import AdminAcessos from "./components/auth/AdminAcessos";
 
 const API_BASE = (import.meta as any).env?.VITE_API_URL || "";
 
-export default function App() {
-  const processFile = (file: File) => {
-    console.warn("Upload local inativo.");
-  };
 
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("theme");
-      return (
-        saved === "dark" ||
-        (!saved && window.matchMedia("(prefers-color-scheme: dark)").matches)
-      );
-    }
-    return false;
-  });
+function InnerApp() {
+  const { user, role, loading, isAuthEnabled } = useAuth();
 
-  useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add("dark");
-      localStorage.setItem("theme", "dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-      localStorage.setItem("theme", "light");
-    }
-  }, [isDarkMode]);
-
-  const [stats, setStats] = useState<ProductStats[]>([]);
-  const [financialStats, setFinancialStats] = useState<DailyFinancialStats[]>(
-    [],
-  );
-  const [marketScatterStats, setMarketScatterStats] = useState<
-    MarketScatterStat[]
-  >([]);
-  const [productScatterStats, setProductScatterStats] = useState<
-    ProductScatterStat[]
-  >([]);
-  const [dailyProductPerformances, setDailyProductPerformances] = useState<
-    any[]
-  >([]);
-  const [desempenhoSelectedProducts, setDesempenhoSelectedProducts] = useState<
-    string[]
-  >([]);
-
-  const [mensalSelectedMarkets, setMensalSelectedMarkets] = useState<string[]>(
-    [],
-  );
-  const [mensalSelectedYear, setMensalSelectedYear] = useState<string>(
-    new Date().getFullYear().toString(),
-  );
-  const [mensalAvailableYears, setMensalAvailableYears] = useState<string[]>(
-    [],
-  );
-  const [mensalMetric, setMensalMetric] = useState<
-    "volume" | "faturamento" | "margem_bruta" | "margem_liquida"
-  >("faturamento");
-  const [monthlyPerformanceData, setMonthlyPerformanceData] = useState<any[]>(
-    [],
-  );
-
+  const [activeTab, setActiveTab] = useState<string>("vendas");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isDarkMode, setIsDarkMode] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [isDragging, setIsDragging] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const loadGlobalData = async () => {
-      setIsLoading(true);
-      try {
-        const uniqueClients = new Set<string>();
-        let globalMinD: Date | null = null;
-        let globalMaxD: Date | null = null;
-
-        const res = await fetch(`${API_BASE}/api/sales`);
-        if (!res.ok) throw new Error("Falha ao buscar vendas do Supabase");
-        const salesRows = await res.json();
-
-        const combinedRows = salesRows.map((row: any) => {
-          const dayD = new Date(row.dayDate);
-          if (!globalMinD || dayD.getTime() < globalMinD.getTime())
-            globalMinD = dayD;
-          if (!globalMaxD || dayD.getTime() > globalMaxD.getTime())
-            globalMaxD = dayD;
-
-          if (row.client) uniqueClients.add(row.client);
-
-          return {
-            ...row,
-            date: new Date(row.date),
-            dayDate: dayD,
-            salePrice: Number(row.salePrice),
-            costPrice: Number(row.costPrice),
-          };
-        });
-
-        const formatDateToLocalStr = (d: Date) => {
-          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-        };
-
-        if (globalMinD && globalMaxD) {
-          const minStr = formatDateToLocalStr(globalMinD as Date);
-          const maxStr = formatDateToLocalStr(globalMaxD as Date);
-          setDatasetMinDate(minStr);
-          setDatasetMaxDate(maxStr);
-          setFilterStartDate(minStr);
-          setFilterEndDate(maxStr);
-        }
-
-        if (combinedRows.length > 0) {
-          const available = Array.from(uniqueClients).sort() as string[];
-          setAvailableUnits(available);
-          setSelectedUnits(available);
-          setRawData(combinedRows);
-        }
-      } catch (err: any) {
-        console.error("Error loading cloud data", err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadGlobalData();
-  }, []);
-
-  const [activeTab, setActiveTab] = useState<
-    | "vendas"
-    | "indicadores"
-    | "lucro_fluxo"
-    | "dispersao_mercados"
-    | "dispersao_produtos"
-    | "desempenho_tipo"
-    | "plano_acao"
-    | "pos_estocagem"
-    | "analise_cesta"
-    | "mapa_calor"
-    | "desempenho_mensal"
-    | "gestao_validade"
-    | "auditoria"
-    | "repasse_sindicos"
-    | "validade_estoque"
-    | "elasticidade_precos"
-  >("vendas");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [mensalSelectedMarkets, setMensalSelectedMarkets] = useState<string[]>([]);
+  const [mensalSelectedYear, setMensalSelectedYear] = useState<string>(new Date().getFullYear().toString());
+  const [mensalAvailableYears, setMensalAvailableYears] = useState<string[]>([]);
+  const [mensalMetric, setMensalMetric] = useState<"faturamento" | "ticket" | "margem">("faturamento");
+  const [dailyProductPerformances, setDailyProductPerformances] = useState<any[]>([]);
+  const [desempenhoSelectedProducts, setDesempenhoSelectedProducts] = useState<string[]>([]);
+  const [monthlyPerformanceData, setMonthlyPerformanceData] = useState<any[]>([]);
+  const [marketScatterStats, setMarketScatterStats] = useState<any[]>([]);
+  const [productScatterStats, setProductScatterStats] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>(null);
+  const [financialStats, setFinancialStats] = useState<any>(null);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<any>(null);
+  const [syncStatus, setSyncStatus] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [minDate, setMinDate] = useState<string>("");
+  const [maxDate, setMaxDate] = useState<string>("");
+  const [isDragging, setIsDragging] = useState(false);
 
   const [rawData, setRawData] = useState<MappedRow[] | null>(null);
 
@@ -3612,8 +3495,12 @@ export default function App() {
                 }}
               />
             )}
-            {activeTab === "repasse_sindicos" && rawData && (
-              <RepasseSindicos
+            
+            {activeTab === "admin_acessos" && (
+              <AdminAcessos />
+            )}
+            {activeTab === "portal_sindico" && rawData && (
+              <PortalSindico
                 rawData={rawData}
                 availableUnits={availableUnits}
               />
@@ -3629,4 +3516,26 @@ export default function App() {
       </main>
     </div>
   );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <InnerAppAuthWrapper />
+    </AuthProvider>
+  );
+}
+
+function InnerAppAuthWrapper() {
+  const { user, role, loading, isAuthEnabled } = useAuth();
+
+  if (loading) {
+    return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">Carregando...</div>;
+  }
+
+  if (isAuthEnabled && !user) {
+    return <Login />;
+  }
+
+  return <InnerApp />;
 }
