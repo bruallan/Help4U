@@ -104,8 +104,8 @@ function InnerApp() {
   const [monthlyPerformanceData, setMonthlyPerformanceData] = useState<any[]>([]);
   const [marketScatterStats, setMarketScatterStats] = useState<any[]>([]);
   const [productScatterStats, setProductScatterStats] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>(null);
-  const [financialStats, setFinancialStats] = useState<any>(null);
+  const [stats, setStats] = useState<any[]>([]);
+  const [financialStats, setFinancialStats] = useState<any[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -114,7 +114,7 @@ function InnerApp() {
   const [maxDate, setMaxDate] = useState<string>("");
   const [isDragging, setIsDragging] = useState(false);
 
-  const [rawData, setRawData] = useState<MappedRow[] | null>(null);
+  const [rawData, setRawData] = useState<MappedRow[]>([]);
 
   const [sortConfig, setSortConfig] = useState<{
     key: string;
