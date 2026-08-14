@@ -145,15 +145,17 @@ async function fillPlanograms() {
               status: "active"
             };
 
-            if (produto.default_price !== null && produto.default_price !== undefined) {
+            let suggestedPrice = 0;
+            if (produto.default_price !== null && produto.default_price !== undefined && produto.default_price !== "") {
+              suggestedPrice = parseFloat(produto.default_price);
               itemObj.use_default_price_product = true;
             } else {
-              const cost = produto.cost_price || 0;
+              const cost = parseFloat(produto.cost_price || "0");
               const exactSuggestedPrice = cost / 0.58;
-              const suggestedPrice = Math.max(0, parseFloat((Math.ceil(exactSuggestedPrice * 10) / 10 - 0.01).toFixed(2)));
-              itemObj.desired_price = suggestedPrice;
+              suggestedPrice = Math.max(0, parseFloat((Math.ceil(exactSuggestedPrice * 10) / 10 - 0.01).toFixed(2)));
               itemObj.use_default_price_product = false;
             }
+            itemObj.desired_price = suggestedPrice;
 
             itemsToPatch.push(itemObj);
             addedCount++;
