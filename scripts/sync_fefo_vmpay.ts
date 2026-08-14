@@ -216,7 +216,7 @@ async function atualizarValidadePlanograma(produtoId: number, instalacaoId: numb
   }
 }
 
-async function run() {
+export async function run() {
   if (!VMPAY_API_KEY) {
     throw new Error('VMPAY_API_KEY env missing');
   }
@@ -224,10 +224,13 @@ async function run() {
     await processPickLists();
     await processVendas();
     log("Sincronização FEFO concluída com sucesso.");
-    process.exit(0);
+    return logs;
   } catch (e: any) {
     log(`Erro: ${e.message}`);
-    process.exit(1);
+    throw e;
   }
 }
-run();
+import { fileURLToPath } from "url";
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  run().then(() => process.exit(0)).catch(() => process.exit(1));
+}

@@ -141,14 +141,16 @@ app.post("/api/sync/vmpay-to-db", async (req, res) => {
 
 // MOCK FINISHED TESTS
 
-app.post("/api/sync-db", (req, res) => {
-  exec("npm run db:sync", (error, stdout, stderr) => {
-    if (error) {
-      console.error(`exec error: ${error}`);
-      return res.status(500).json({ error: error.message });
-    }
-    res.json({ message: "Sync concluído", stdout, stderr });
-  });
+import { runSync } from "../scripts/sync_vmpay.js";
+
+app.post("/api/sync-db", async (req, res) => {
+  try {
+    const logs = await runSync();
+    res.json({ message: "Sync concluído", stdout: logs?.join("\n") });
+  } catch (error: any) {
+    console.error(`exec error: ${error}`);
+    return res.status(500).json({ error: error.message });
+  }
 });
 
 app.get("/api/sales", async (req, res) => {
@@ -926,35 +928,38 @@ app.post("/api/sync/db-to-vmpay", async (req, res) => {
 
 // Cron Job Route para atualizar validades e reduzir estoques velhos diariamente
 
+import { fillPlanograms } from "../scripts/fill_planograms.js";
+import { run as runSyncFefo } from "../scripts/sync_fefo_vmpay.js";
+
 // Cron Job Route para inserir todos os produtos faltantes nos planogramas
-app.post("/api/planogramas/add-missing", (req, res) => {
-  exec("npx tsx scripts/fill_planograms.ts", (error, stdout, stderr) => {
-    if (error) {
-      console.error(`Erro ao executar script: ${error}`);
-      return res.status(500).json({ error: error.message, stderr });
-    }
-    res.json({ message: "Produtos adicionados aos planogramas com sucesso", stdout, stderr });
-  });
+app.post("/api/planogramas/add-missing", async (req, res) => {
+  try {
+    const logs = await fillPlanograms();
+    res.json({ message: "Produtos adicionados aos planogramas com sucesso", stdout: logs?.join("\n") });
+  } catch (error: any) {
+    console.error(`Erro ao executar script: ${error}`);
+    return res.status(500).json({ error: error.message });
+  }
 });
 
-app.post("/api/cron/sync-fefo", (req, res) => {
-  exec("npx tsx scripts/sync_fefo_vmpay.ts", (error, stdout, stderr) => {
-    if (error) {
-      console.error(`Erro ao executar script FEFO: ${error}`);
-      return res.status(500).json({ error: error.message, stderr });
-    }
-    res.json({ message: "Sincronização FEFO com VMPay concluída com sucesso", stdout, stderr });
-  });
+app.post("/api/cron/sync-fefo", async (req, res) => {
+  try {
+    const logs = await runSyncFefo();
+    res.json({ message: "Sincronização FEFO com VMPay concluída com sucesso", stdout: logs?.join("\n") });
+  } catch (error: any) {
+    console.error(`Erro ao executar script FEFO: ${error}`);
+    return res.status(500).json({ error: error.message });
+  }
 });
 
-app.post("/api/cron/fill-planograms", (req, res) => {
-  exec("tsx scripts/fill_planograms.ts", (error, stdout, stderr) => {
-    if (error) {
-      console.error(`exec error: ${error}`);
-      return res.status(500).json({ error: error.message });
-    }
-    res.json({ message: "Fill planograms concluído", stdout, stderr });
-  });
+app.post("/api/cron/fill-planograms", async (req, res) => {
+  try {
+    const logs = await fillPlanograms();
+    res.json({ message: "Fill planograms concluído", stdout: logs?.join("\n") });
+  } catch (error: any) {
+    console.error(`exec error: ${error}`);
+    return res.status(500).json({ error: error.message });
+  }
 });
 
 app.post("/api/cron/fefo-sync", async (req, res) => {

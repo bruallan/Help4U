@@ -66,7 +66,7 @@ async function patchApi(endpoint: string, body: any) {
   throw new Error(`Failed to patch ${endpoint} after 3 retries.`);
 }
 
-async function fillPlanograms() {
+export async function fillPlanograms() {
   log("Starting fill planograms script (VMPay API Sync)...");
   if (!VMPAY_API_KEY) {
     throw new Error('VMPAY_API_KEY env missing');
@@ -188,10 +188,13 @@ async function fillPlanograms() {
 
   log(`Processo finalizado com sucesso! Total de itens enviados à API VMPay: ${addedCount}`);
   log("Os planogramas no banco de dados local serão atualizados automaticamente na próxima execução da rotina 'sync_vmpay'.");
-  process.exit(0);
+  return logs;
 }
 
-fillPlanograms().catch(e => {
+import { fileURLToPath } from "url";
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  fillPlanograms().then(() => process.exit(0)).catch(e => {
   console.error(e);
-  process.exit(1);
+  throw e;
 });
+}

@@ -416,7 +416,7 @@ async function syncInventoryMovements() {
   log(`Synced ${count} movimentos.`);
 }
 
-async function runSync() {
+export async function runSync() {
   if (!VMPAY_API_KEY) {
     throw new Error('VMPAY_API_KEY env missing');
   }
@@ -428,13 +428,16 @@ async function runSync() {
     await syncCashlessFacts();
     await syncInventoryMovements();
     log("======= SINCRONIZAÇÃO COMPLETA =======");
-    process.exit(0);
+    return logs;
   } catch(e: any) {
      log(`PROCESS FAILED: ${e.message}`);
      if (e.cause) log(`CAUSED BY: ${e.cause}`);
      if (e.stack) log(`STACK: ${e.stack}`);
-     process.exit(1);
+     throw e;
   }
 }
 
-runSync();
+import { fileURLToPath } from "url";
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  runSync().then(() => process.exit(0)).catch(() => process.exit(1));
+}
