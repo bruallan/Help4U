@@ -18,7 +18,7 @@ jobs:
       - name: Configurar Node.js (v20)
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Instalar Dependências (Omitte pacotes pesados de navegador)

@@ -57,24 +57,28 @@ async function processPickLists() {
     if (!visits || visits.length === 0) break;
     
     for (const visit of visits) {
-      if (visit.pick_list_id && visit.installation_id && visit.machine_id) {
-        log(`Processando Pick List ${visit.pick_list_id} da instalação ${visit.installation_id}...`);
-        try {
-          const pickList = await fetchApi(`/machines/${visit.machine_id}/installations/${visit.installation_id}/pick_lists/${visit.pick_list_id}`);
-          if (pickList && pickList.items) {
-            const movimentacoes = pickList.items.map((item: any) => ({
-              produtoId: item.good_id,
-              quantidade: item.quantity,
-              instalacaoId: visit.installation_id
-            })).filter((m: any) => m.produtoId && m.quantidade > 0);
-            
-            if (movimentacoes.length > 0) {
-              await aplicarAbastecimentoFEFO(movimentacoes);
-              totalAbastecimentos += movimentacoes.length;
+      if (visit.checkpoints && Array.isArray(visit.checkpoints)) {
+        for (const checkpoint of visit.checkpoints) {
+          if (checkpoint.pick_list_id && checkpoint.installation_id) {
+            log(`Processando Pick List ${checkpoint.pick_list_id} da instalação ${checkpoint.installation_id}...`);
+            try {
+              const pickList = await fetchApi(`/pick_lists/${checkpoint.pick_list_id}`);
+              if (pickList && pickList.items) {
+                const movimentacoes = pickList.items.map((item: any) => ({
+                  produtoId: item.good_id,
+                  quantidade: item.quantity,
+                  instalacaoId: checkpoint.installation_id
+                })).filter((m: any) => m.produtoId && m.quantidade > 0);
+                
+                if (movimentacoes.length > 0) {
+                  await aplicarAbastecimentoFEFO(movimentacoes);
+                  totalAbastecimentos += movimentacoes.length;
+                }
+              }
+            } catch (e: any) {
+              log(`Erro ao processar pick list ${checkpoint.pick_list_id}: ${e.message}`);
             }
           }
-        } catch (e: any) {
-          log(`Erro ao processar pick list ${visit.pick_list_id}: ${e.message}`);
         }
       }
     }
@@ -147,10 +151,10 @@ async function processVendas() {
     
     for (const venda of vendas) {
       if (!['OK', 'ok', 'Ok'].includes(venda.status)) continue;
-      if (venda.good_id && venda.installation_id) {
-        const key = `${venda.installation_id}_${venda.good_id}`;
+      if (venda.good && venda.good.id && venda.installation_id) {
+        const key = `${venda.installation_id}_${venda.good.id}`;
         if (!vendasAgrupadas.has(key)) {
-          vendasAgrupadas.set(key, { produtoId: venda.good_id, instalacaoId: venda.installation_id, quantidade: 0 });
+          vendasAgrupadas.set(key, { produtoId: venda.good.id, instalacaoId: venda.installation_id, quantidade: 0 });
         }
         vendasAgrupadas.get(key)!.quantidade += 1;
       }
